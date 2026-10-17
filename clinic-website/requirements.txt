@@ -1,0 +1,3 @@
+Flask==3.0.3
+# --- optional: real WhatsApp/SMS sending ---
+# twilio==9.2.0

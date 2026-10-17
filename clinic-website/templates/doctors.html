@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}Our doctors - CityCare Clinic{% endblock %}
+{% block content %}
+  <section class="page-hero">
+    <div class="container">
+      <div class="crumbs"><a href="/">Home</a> / Doctors</div>
+      <h1>Find your specialist</h1>
+      <p>Filter by speciality, compare experience and fees, book the slot that suits you.</p>
+    </div>
+  </section>
+  <section class="section" style="padding-top:40px;">
+    <div class="container">
+      <div class="filter-row" id="filter-row"></div>
+      <div class="doc-grid" id="doctor-grid"></div>
+    </div>
+  </section>
+  <section class="section alt" style="padding-top:52px;padding-bottom:52px;">
+    <div class="container">
+      <div class="cta-band">
+        <div><h2>Not sure which doctor you need?</h2><p>Ask our AI assistant - describe your symptoms and get guided to the right specialist.</p></div>
+        <button class="btn btn-lg" style="background:#fff;color:var(--primary);" onclick="document.querySelector('.chat-fab').click()">Ask the AI assistant</button>
+      </div>
+    </div>
+  </section>
+{% endblock %}
