@@ -88,6 +88,7 @@ sent so they never double-fire:
 | `SHOW_DEMO_HINT` | `1` | `0` hides the demo password hint on the login page |
 | `CLINIC_DB` | `./clinic.db` | alternate SQLite file (used by the tests) |
 | `PORT` / `HOST` | `5000` / `127.0.0.1` | bind address for `python app.py`; a host sets `PORT` and needs `HOST=0.0.0.0` |
+| `SESSION_COOKIE_SECURE` | off | `1` adds the `Secure` flag to the login cookie - set it whenever the site is served over HTTPS |
 | `TWILIO_SID` / `TWILIO_TOKEN` / `TWILIO_FROM` / `WHATSAPP_FROM` | - | real messaging |
 
 `clinic.db` is git-ignored - never commit the real patient data. `.env`,

@@ -20,6 +20,9 @@ Env vars (all optional in development):
     SHOW_DEMO_HINT    "0" hides the demo password hint on the login page
     PORT / HOST       bind address for `python app.py` (default 127.0.0.1:5000;
                       hosted platforms set PORT and expect HOST=0.0.0.0)
+    SESSION_COOKIE_SECURE
+                      "1" marks the login cookie Secure - set it only when the
+                      site is served over HTTPS
 """
 import functools
 import os
@@ -46,6 +49,9 @@ DEBUG = os.getenv("FLASK_DEBUG") == "1"
 app.secret_key = os.getenv("SECRET_KEY") or "dev-only-insecure-key-change-me"
 app.config["SESSION_COOKIE_HTTPONLY"] = True
 app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+# on a plain http:// dev server a Secure cookie would never be stored at all,
+# so it stays off unless the host says it terminates TLS
+app.config["SESSION_COOKIE_SECURE"] = os.getenv("SESSION_COOKIE_SECURE") == "1"
 
 if not os.getenv("SECRET_KEY"):
     app.logger.warning("SECRET_KEY is not set - using an insecure development key.")

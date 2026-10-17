@@ -216,6 +216,27 @@ class TestDoctorAuthentication(_TempDatabase):
                                                            "password": "newsecret1"}
                                           ).status_code, 302)
 
+    def test_session_cookie_secure_is_env_driven(self):
+        """SESSION_COOKIE_SECURE=1 adds the Secure flag; the default must not."""
+        import importlib
+
+        def login_cookie(module):
+            return module.app.test_client().post(
+                "/doctor", data={"doctor_id": 1,
+                                 "password": self.db.default_demo_password(1)}
+            ).headers["Set-Cookie"]
+
+        self.assertNotIn("Secure", login_cookie(self.app))
+        saved = os.environ.pop("SESSION_COOKIE_SECURE", None)
+        try:
+            os.environ["SESSION_COOKIE_SECURE"] = "1"
+            self.assertIn("Secure", login_cookie(importlib.reload(self.app)))
+        finally:
+            os.environ.pop("SESSION_COOKIE_SECURE", None)
+            if saved is not None:
+                os.environ["SESSION_COOKIE_SECURE"] = saved
+            importlib.reload(self.app)
+
 
 class TestOwnership(_TempDatabase):
     def test_cannot_change_another_doctors_booking(self):
