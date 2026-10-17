@@ -18,6 +18,8 @@ Env vars (all optional in development):
     ENABLE_REMINDERS  "0" to switch the background reminder sweep off
     REMINDER_MINUTES  how often the sweep runs (default 10)
     SHOW_DEMO_HINT    "0" hides the demo password hint on the login page
+    PORT / HOST       bind address for `python app.py` (default 127.0.0.1:5000;
+                      hosted platforms set PORT and expect HOST=0.0.0.0)
 """
 import functools
 import os
@@ -309,4 +311,7 @@ init_db()
 
 if __name__ == "__main__":
     start_reminder_thread()
-    app.run(debug=DEBUG)
+    # Render/Railway/Fly inject PORT (and expect 0.0.0.0); local default stays 5000
+    app.run(host=os.getenv("HOST", "127.0.0.1"),
+            port=int(os.getenv("PORT", "5000")),
+            debug=DEBUG)

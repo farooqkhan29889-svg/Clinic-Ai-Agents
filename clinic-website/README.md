@@ -87,6 +87,7 @@ sent so they never double-fire:
 | `REMINDER_MINUTES` | `10` | sweep interval |
 | `SHOW_DEMO_HINT` | `1` | `0` hides the demo password hint on the login page |
 | `CLINIC_DB` | `./clinic.db` | alternate SQLite file (used by the tests) |
+| `PORT` / `HOST` | `5000` / `127.0.0.1` | bind address for `python app.py`; a host sets `PORT` and needs `HOST=0.0.0.0` |
 | `TWILIO_SID` / `TWILIO_TOKEN` / `TWILIO_FROM` / `WHATSAPP_FROM` | - | real messaging |
 
 `clinic.db` is git-ignored - never commit the real patient data. `.env`,
@@ -96,8 +97,17 @@ sent so they never double-fire:
 1. Real WhatsApp/SMS: `pip install twilio`, set the four Twilio env vars above -
    reminders.py then sends for real (send failures are logged, not fatal).
 2. Real LLM chatbot: replace the intents in chatbot.py with an OpenAI/Claude/Ollama call.
-3. Deploy: Railway / Render / PythonAnywhere - `init_db()` runs on import, so the
-   tables exist before the first request. Set `SECRET_KEY`, keep `FLASK_DEBUG` off.
+3. Deploy: Railway / Render / Fly / PythonAnywhere - `init_db()` runs on import, so
+   the tables exist before the first request. Set `SECRET_KEY`, keep `FLASK_DEBUG` off.
+   Serve it on the port the host gives you, bound to all interfaces, and run only
+   ONE server - two processes cannot share a port:
+   - `HOST=0.0.0.0 PORT=$PORT python app.py` (dev server - fine for a demo)
+   - `waitress-serve --listen=0.0.0.0:$PORT app:app` (production WSGI, no debugger)
+   - A host that insists on **uvicorn/ASGI** cannot serve Flask directly - either
+     change its start command to one of the above, or wrap the app
+     (`a2wsgi.WsgiMiddleware(app)`), do not start Flask alongside it.
+   Note: an ephemeral container wipes `clinic.db` on restart, so bookings do not
+   survive redeploys there - attach a volume or move to Postgres.
 
 ## Still open (not security-critical)
 - SQLite is fine for one clinic; a hosted Postgres/MySQL is the next step
