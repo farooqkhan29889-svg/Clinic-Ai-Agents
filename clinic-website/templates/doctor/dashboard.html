@@ -69,6 +69,18 @@
           </tbody>
         </table>
       </div>
+
+      {% set base = "/doctor/dashboard?view=" ~ view ~ "&date=" ~ date_f ~ "&status=" ~ status_f %}
+      <div class="pager">
+        <span>{{ total }} appointment{{ "" if total==1 else "s" }} in this view</span>
+        {% if pages > 1 %}
+        <div class="pager-nav">
+          {% if page > 1 %}<a class="btn btn-outline btn-sm" href="{{ base }}&amp;page={{ page-1 }}">&larr; Prev</a>{% endif %}
+          <b>Page {{ page }} / {{ pages }}</b>
+          {% if page < pages %}<a class="btn btn-outline btn-sm" href="{{ base }}&amp;page={{ page+1 }}">Next &rarr;</a>{% endif %}
+        </div>
+        {% endif %}
+      </div>
     </div>
   </section>
 {% endblock %}

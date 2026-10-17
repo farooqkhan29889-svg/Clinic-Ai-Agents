@@ -28,12 +28,16 @@
 
         <div class="wiz-nav" style="margin-top:22px;">
           <a class="btn btn-wa" style="flex:1;justify-content:center;" target="_blank" rel="noopener" href="https://wa.me/91{{ b.phone }}">Message on WhatsApp</a>
-          {% if b.status == "Confirmed" %}
+          {% if can_edit and b.status == "Confirmed" %}
           <button class="btn btn-primary" style="flex:1;justify-content:center;" onclick="setStatus('{{ b.booking_id }}','Completed')">Mark completed</button>
           <button class="btn btn-outline" style="flex:1;justify-content:center;color:var(--danger);border-color:#fecaca;" onclick="setStatus('{{ b.booking_id }}','Cancelled')">Cancel appointment</button>
           {% endif %}
         </div>
+        {% if can_edit %}
         <p style="font-size:12px;color:var(--ink-3);margin-top:12px;">Status changes notify the patient automatically on WhatsApp + SMS.</p>
+        {% else %}
+        <p style="font-size:12px;color:var(--ink-3);margin-top:12px;">This appointment belongs to {{ b.doctor_name }} - only the treating doctor can change its status.</p>
+        {% endif %}
       </div>
     </div>
   </section>

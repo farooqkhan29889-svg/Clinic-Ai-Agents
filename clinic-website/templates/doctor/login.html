@@ -4,23 +4,41 @@
   <section class="page-hero">
     <div class="container">
       <h1 style="font-size:clamp(24px,3vw,32px);">Doctor panel</h1>
-      <p>Tap your name to see your appointments.</p>
+      <p>Sign in with your own password to see your appointments.</p>
     </div>
   </section>
   <section class="section" style="padding-top:36px;">
     <div class="container" style="max-width:720px;">
+      {% if error %}
+      <p style="font-size:14px;color:var(--danger);font-weight:600;margin-bottom:14px;">{{ error }}</p>
+      {% endif %}
       <div class="pick-grid">
         {% for d in doctors %}
+        {% set parts = d.name.replace("Dr. ", "").split(" ") %}
         <form method="POST" action="/doctor" style="margin:0;">
           <input type="hidden" name="doctor_id" value="{{ d.id }}">
-          <button class="pick-card" type="submit" style="width:100%;padding:16px;">
-            <div class="doc-avatar" style="background:{{ d.color }}">{{ d.initials }}</div>
-            <div><b style="font-size:15px;">{{ d.name }}</b><span>{{ d.spec }}</span></div>
-          </button>
+          <div class="pick-card" style="padding:16px;display:block;">
+            <div style="display:flex;gap:12px;align-items:center;margin-bottom:12px;">
+              <div class="doc-avatar" style="background:{{ d.color }}">{{ (parts[0][0] ~ (parts[1][0] if parts|length > 1 else "")).upper() }}</div>
+              <div><b style="font-size:15px;">{{ d.name }}</b><span>{{ d.spec }}</span></div>
+            </div>
+            <input type="password" name="password" placeholder="Password" autocomplete="current-password"
+                   style="width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:10px;font-size:14px;outline:none;">
+            <button class="btn btn-primary btn-sm" type="submit" style="width:100%;margin-top:10px;">Log in</button>
+          </div>
         </form>
         {% endfor %}
       </div>
-      <p style="font-size:12px;color:var(--ink-3);text-align:center;margin-top:18px;">No password needed in this demo version. Each doctor sees only their own patients.</p>
+      {% if hint %}
+      <p style="font-size:12px;color:var(--ink-3);text-align:center;margin-top:18px;">
+        Demo password: <b>citycare&lt;doctor id&gt;123</b> (doctor 1 = citycare1123).
+        Set a real one with <code>python set_password.py &lt;doctor_id&gt; &lt;new password&gt;</code>.
+      </p>
+      {% else %}
+      <p style="font-size:12px;color:var(--ink-3);text-align:center;margin-top:18px;">
+        Each doctor sees only their own patients.
+      </p>
+      {% endif %}
     </div>
   </section>
 {% endblock %}

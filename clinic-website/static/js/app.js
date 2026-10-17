@@ -12,7 +12,11 @@ const DAYS = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
 const MONS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 const nextDays = n => { const o=[],t=new Date(); for(let i=1;i<=n;i++){const d=new Date(t); d.setDate(t.getDate()+i); o.push(d);} return o; };
 const fmt = d => DAYS[d.getDay()]+", "+d.getDate()+" "+MONS[d.getMonth()];
-const iso = d => d.toISOString().slice(0,10);
+/* local calendar date - toISOString() is UTC and would shift the day */
+const iso = d => [d.getFullYear(), String(d.getMonth()+1).padStart(2,"0"),
+                  String(d.getDate()).padStart(2,"0")].join("-");
+const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g,
+  c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const initials = n => n.replace("Dr. ","").split(" ").slice(0,2).map(w=>w[0]).join("").toUpperCase();
 
 /* ---------- toast ---------- */
@@ -63,13 +67,14 @@ function docCard(d){
       <a class="btn btn-primary btn-sm" href="/appointment?doc=${d.id}">Book &#128197;</a>
     </div></div>`;
 }
-loadDoctors();
+const doctorsReady = loadDoctors();
 
 /* ---------- booking wizard ---------- */
 (function(){
   const panel=$("#wizard"); if(!panel) return;
   const bk={doctor_id:null,date:null,time:null,name:"",phone:"",email:"",reason:"",id:null};
   let step=1;
+  let AVAIL=null;              /* {date, free:[times]} from /api/availability */
   const q=new URLSearchParams(location.search).get("doc");
   if(q) bk.doctor_id=+q;
   const stepNames=["Doctor","Date & time","Your details","Confirmed"];
@@ -77,6 +82,36 @@ loadDoctors();
   const dots=()=>`<div class="wiz-steps">${[1,2,3,4].map(i=>
       `<div class="wiz-dot ${i<step?"done":i===step?"on":""}">${i<step?"&#10004;":i}</div>${i<4?`<div class="wiz-line ${i<step?"done":""}"></div>`:""}`).join("")}</div>
     <div class="wiz-step-labels">${stepNames.map((s,i)=>`<span class="${i+1===step?"on":""}">${s}</span>`).join("")}</div>`;
+
+  const note = msg => `<p style="color:var(--ink-3);font-size:14px;">${msg}</p>`;
+
+  /* real availability from /api/availability, not a cosmetic guess */
+  function slotsBlock(doc){
+    if(bk.date===null) return note("Select a date to see slots.");
+    const day=iso(nextDays(10)[bk.date]);
+    if(!AVAIL || AVAIL.date!==day) return note("Checking live availability...");
+    if(!AVAIL.free.length) return note("No free slots on this date - please pick another day.");
+    return doc.slots.map(s=>{
+      const free=AVAIL.free.includes(s);
+      return `<button class="slot ${bk.time===s?"on":""} ${free?"":"off"}" data-s="${s}"${free?"":" disabled"}>${s}</button>`;
+    }).join("");
+  }
+
+  async function loadAvailability(){
+    AVAIL=null; bk.time=null; render();
+    const day=iso(nextDays(10)[bk.date]);
+    try{
+      const r=await fetch(`/api/availability?doctor_id=${bk.doctor_id}&date=${encodeURIComponent(day)}`);
+      const d=await r.json();
+      AVAIL={date:day, free:(d && d.free) || []};
+    }catch(e){
+      /* network trouble: show the doctor's full list - the server still validates */
+      const doc=DOCTORS.find(x=>x.id===bk.doctor_id) || {slots:[]};
+      toast("Could not check live availability","err");
+      AVAIL={date:day, free:doc.slots};
+    }
+    render();
+  }
 
   function render(){
     let body="";
@@ -90,16 +125,13 @@ loadDoctors();
       body=`<h3>${doc.name} - pick a date</h3><div class="date-strip">`+
         days.map((d,i)=>`<button class="date-cell ${bk.date===i?"on":""}" data-i="${i}">
           <span>${DAYS[d.getDay()]}</span><b class="num">${d.getDate()}</b><span>${MONS[d.getMonth()]}</span></button>`).join("")+`</div>
-        <h3>Available slots</h3><div class="slot-grid">`+
-        (bk.date===null?'<p style="color:var(--ink-3);font-size:14px;">Select a date to see slots.</p>'
-          :doc.slots.map(s=>{const taken=(bk.date+s.charCodeAt(0))%4===0;
-            return `<button class="slot ${bk.time===s?"on":""} ${taken?"off":""}" data-s="${s}">${s}</button>`;}).join(""))+`</div>`;
+        <h3>Available slots</h3><div class="slot-grid">`+slotsBlock(doc)+`</div>`;
     }else if(step===3){
       body=`<h3>Patient details</h3><div class="form-grid">
-        <div class="field"><label>Full name *</label><input id="f-name" value="${bk.name}" placeholder="e.g. Ravi Kumar"><div class="err">Enter your name</div></div>
-        <div class="field"><label>Mobile (10 digits) *</label><input id="f-phone" class="num" maxlength="10" value="${bk.phone}" placeholder="98765 43210"><div class="err">Enter a valid 10-digit number</div></div>
-        <div class="field"><label>Email (optional)</label><input id="f-email" value="${bk.email}" placeholder="you@email.com"></div>
-        <div class="field"><label>Reason for visit (optional)</label><input id="f-reason" value="${bk.reason}" placeholder="e.g. fever since 2 days"></div></div>
+        <div class="field"><label>Full name *</label><input id="f-name" value="${esc(bk.name)}" placeholder="e.g. Ravi Kumar"><div class="err">Enter your name</div></div>
+        <div class="field"><label>Mobile (10 digits) *</label><input id="f-phone" class="num" maxlength="10" value="${esc(bk.phone)}" placeholder="98765 43210"><div class="err">Enter a valid 10-digit number</div></div>
+        <div class="field"><label>Email (optional)</label><input id="f-email" value="${esc(bk.email)}" placeholder="you@email.com"></div>
+        <div class="field"><label>Reason for visit (optional)</label><input id="f-reason" value="${esc(bk.reason)}" placeholder="e.g. fever since 2 days"></div></div>
         <div class="reminder-note">&#128276;<span>Instant <b>WhatsApp + SMS</b> confirmation, then automatic reminders <b>24h</b> and <b>2h</b> before your visit.</span></div>`;
     }else{
       const d=nextDays(10)[bk.date], doc=DOCTORS.find(x=>x.id===bk.doctor_id);
@@ -110,10 +142,10 @@ loadDoctors();
         <div class="review-box">
           <div class="hc-row"><span>Doctor</span><b>${doc.name} &middot; ${doc.spec}</b></div>
           <div class="hc-row"><span>When</span><b class="num">${fmt(d)} &middot; ${bk.time}</b></div>
-          <div class="hc-row"><span>Patient</span><b>${bk.name}</b></div>
+          <div class="hc-row"><span>Patient</span><b>${esc(bk.name)}</b></div>
           <div class="hc-row"><span>Fee</span><b class="num">&#8377;${doc.fee}</b></div></div>
         <div class="msg-preview"><b>WhatsApp + SMS sent by Python</b>
-          Hi ${bk.name.split(" ")[0]}, your appointment with ${doc.name} is confirmed for ${fmt(d)} at ${bk.time}. Booking ID ${bk.id}. Reply C to cancel. - CityCare<br>
+          Hi ${esc(bk.name.split(" ")[0])}, your appointment with ${doc.name} is confirmed for ${fmt(d)} at ${bk.time}. Booking ID ${bk.id}. Reply C to cancel. - CityCare<br>
           <small style="color:var(--ink-3)">Check your terminal - reminders.py printed the real message there in demo mode.</small></div>
         <div class="wiz-nav">
           <a class="btn btn-outline" href="/" style="flex:1;justify-content:center;">Back to home</a>
@@ -129,8 +161,8 @@ loadDoctors();
   }
 
   function bind(){
-    $$(".pick-card").forEach(c=>c.onclick=()=>{bk.doctor_id=+c.dataset.id;render();});
-    $$(".date-cell").forEach(c=>c.onclick=()=>{bk.date=+c.dataset.i;bk.time=null;render();});
+    $$(".pick-card").forEach(c=>c.onclick=()=>{bk.doctor_id=+c.dataset.id;AVAIL=null;render();});
+    $$(".date-cell").forEach(c=>c.onclick=()=>{bk.date=+c.dataset.i;loadAvailability();});
     $$(".slot:not(.off)").forEach(c=>c.onclick=()=>{bk.time=c.dataset.s;render();});
     const back=$("#w-back"); back&&(back.onclick=()=>{step--;render();});
     const next=$("#w-next");
@@ -153,7 +185,12 @@ loadDoctors();
         const r=await fetch("/api/book",{method:"POST",headers:{"Content-Type":"application/json"},
           body:JSON.stringify({doctor_id:bk.doctor_id,date:iso(d),time:bk.time,name:bk.name,phone:bk.phone,email:bk.email,reason:bk.reason})});
         const data=await r.json();
-        if(!data.ok){ next.disabled=false; next.textContent="Confirm booking"; return toast(data.error,"err"); }
+        next.disabled=false; next.textContent="Confirm booking";
+        if(!data.ok){
+          toast(data.error,"err");
+          if(r.status===409){ step=2; loadAvailability(); return; }  /* slot went - re-pick */
+          return;
+        }
         bk.id=data.booking_id; step=4;
         setTimeout(()=>toast("WhatsApp + SMS confirmation sent to +91 "+bk.phone,"ok"),600);
       }
@@ -161,7 +198,7 @@ loadDoctors();
     });
   }
   /* wait for doctors to load before first render */
-  (async()=>{await loadDoctors();render();})();
+  doctorsReady.then(render);
 })();
 
 /* ---------- AI chat (brain lives in Python /api/chat) ---------- */
@@ -222,7 +259,7 @@ loadDoctors();
     return r.json();
   }
   async function userSay(text){
-    addMsg(text,"me");
+    addMsg(esc(text),"me");
     typing(async()=>{const d=await ask(text);addMsg(d.reply,"bot");addActs(d.actions);});
   }
 })();
