@@ -2,10 +2,10 @@
 
 Rule-based intents keep the demo fully offline. To use a real LLM later,
 replace the body of `chat_reply()` with an API call (OpenAI/Claude/Ollama) -
-the Flask route and the chat UI will not need any changes.
+the chat UI will not need any changes.
 
 Bookings go through `database.book_appointment()`, the same validated path the
-web wizard uses, so the chatbot cannot bypass input or slot-conflict rules.
+booking wizard uses, so the chatbot cannot bypass input or slot-conflict rules.
 Conversation state lives in SQLite (`chat_state`), so an unfinished booking
 survives a restart and is shared across workers.
 """

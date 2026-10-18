@@ -23,6 +23,9 @@ Current verified state (so the plan is not guesswork):
 ### Option A — Keep Flask, fix the start command (do this first)
 Cost: ~5 minutes, **zero code changes.**
 
+**STATUS 2026-10-18: not taken.** It was the recommended fix, then C was chosen and the
+Flask app was deleted, so `python app.py` no longer exists.
+
 Host start command:
 
 ```
@@ -62,7 +65,20 @@ extra mount is needed).
 
 **A or B is the answer for "get it live today".** Both keep the design, the API and the tests.
 
+**STATUS 2026-10-18: superseded by C, and then removed.** `asgi_app.py` was built and
+verified live, but once the site moved to Streamlit the shim had nothing to wrap, so it
+and `app.py` are deleted. `a2wsgi`/`uvicorn` are gone from `requirements.txt`.
+
 ### Option C — Port the UI to Streamlit
+**STATUS 2026-10-18: DONE, and the Flask front end is deleted.** `streamlit_app.py`,
+`.streamlit/config.toml` and `test_streamlit_app.py` are in place; 13 UI tests pass on
+top of the 35 data-layer/chatbot/reminder tests that survived. `app.py`, `asgi_app.py`,
+`templates/` and `static/` are gone, so `/api/*` and the signed-cookie login no longer
+exist. One dependency change came with that: `database.py` and `set_password.py` import
+`werkzeug.security`, which Flask used to pull in transitively, so Werkzeug is now listed
+explicitly in `requirements.txt`. Note that Streamlit 1.66 runs Uvicorn itself and logs
+`Uvicorn server started on :::8501` - the exact line from the host that raised this.
+
 Cost: 2-4 days of real work, and it **deletes** things that currently work.
 
 | Asset | What happens in C |
@@ -83,6 +99,9 @@ Reason anyone would still choose C: the host *only* accepts a Streamlit entrypoi
 ---
 
 ## Execution order I recommend
+
+**As executed (2026-10-18):** 1 and 2 were built and verified, then the site went to C
+and the Flask layer was deleted, so steps 1-3 below are now history.
 
 1. Confirm the host name, then try **Option A** exactly as written above. One deploy.
 2. If A cannot bind: **Option B**. One deploy. Ship it.

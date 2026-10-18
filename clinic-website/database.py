@@ -47,6 +47,9 @@ def get_db():
 
 
 def init_db():
+    # CLINIC_DB often points at a volume (e.g. /data/clinic.db) that a freshly
+    # built container has not created yet - sqlite3 cannot make the folder itself.
+    os.makedirs(os.path.dirname(os.path.abspath(DB)), exist_ok=True)
     con = get_db()
     con.executescript("""
     CREATE TABLE IF NOT EXISTS doctors(

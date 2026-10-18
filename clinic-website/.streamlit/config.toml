@@ -1,0 +1,12 @@
+# CityCare - Streamlit theme, matching the colours in static/css/style.css
+# (run `streamlit run streamlit_app.py` from this folder so it is picked up)
+
+[theme]
+base = "light"
+primaryColor = "#0f766e"
+backgroundColor = "#ffffff"
+secondaryBackgroundColor = "#f0fdfa"
+textColor = "#0f172a"
+
+[browser]
+gatherUsageStats = false

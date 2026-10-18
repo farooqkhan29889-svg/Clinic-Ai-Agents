@@ -14,7 +14,7 @@ from datetime import date, datetime, timedelta
 
 
 class _TempDatabase(unittest.TestCase):
-    """Shared fixture: a fresh database + Flask test client per test."""
+    """Shared fixture: a fresh database per test."""
 
     def setUp(self):
         import database
@@ -31,9 +31,6 @@ class _TempDatabase(unittest.TestCase):
         database.generate_password_hash = lambda pw: generate_password_hash(
             pw, method="pbkdf2:sha256:1000")
         database.init_db()
-        import app as app_module
-        self.app = app_module
-        self.client = app_module.app.test_client()
         self.doctors = database.all_doctors()
         self.tomorrow = (date.today() + timedelta(days=1)).strftime("%Y-%m-%d")
         self._quiet = contextlib.redirect_stdout(io.StringIO())
@@ -48,11 +45,6 @@ class _TempDatabase(unittest.TestCase):
                 os.unlink(path)
 
     # helpers ------------------------------------------------------------
-    def login(self, doctor_id=1, password=None):
-        password = password or self.db.default_demo_password(doctor_id)
-        return self.client.post("/doctor", data={"doctor_id": doctor_id,
-                                                 "password": password},
-                                follow_redirects=False)
 
     def insert(self, doctor_id, day, time, name="Test Patient", phone="9812345678",
                status="Confirmed"):
@@ -66,15 +58,10 @@ class _TempDatabase(unittest.TestCase):
         con.close()
         return bid
 
-    def book(self, doctor_id=1, time="09:30", day=None, name="Ravi Kumar",
-             phone="9812349812"):
-        return self.client.post("/api/book", json={
-            "doctor_id": doctor_id, "date": day or self.tomorrow, "time": time,
-            "name": name, "phone": phone})
-
     def chat(self, message, sid="t-chat"):
-        return self.client.post("/api/chat", json={"session_id": sid,
-                                                   "message": message}).get_json()
+        """The chatbot brain called directly - there is no HTTP layer any more."""
+        import chatbot
+        return chatbot.chat_reply(sid, message, self.db.all_doctors())
 
 
 class TestBookingRules(_TempDatabase):
@@ -144,59 +131,37 @@ class TestBookingRules(_TempDatabase):
                          [s for s in doc["slots"] if s != "09:30"])
 
 
-class TestApi(_TempDatabase):
-    def test_doctors_public_but_without_password_hashes(self):
-        rows = self.client.get("/api/doctors").get_json()
-        self.assertEqual(len(rows), 6)
-        self.assertNotIn("pass_hash", rows[0])
+class TestDataLayer(_TempDatabase):
+    """What the old /api endpoints guaranteed, now enforced one layer down."""
 
-    def test_bookings_need_login(self):
-        res = self.client.get("/api/bookings")
-        self.assertEqual(res.status_code, 401)
-        self.assertFalse(res.get_json()["ok"])
+    def test_public_doctor_rows_never_carry_a_password_hash(self):
+        self.assertNotIn("pass_hash", self.db.all_doctors()[0])
+        self.assertNotIn("pass_hash", self.db.get_doctor(1))
 
-    def test_dashboard_redirects_anonymous(self):
-        res = self.client.get("/doctor/dashboard")
-        self.assertEqual(res.status_code, 302)
-        self.assertIn("/doctor", res.headers["Location"])
-
-    def test_book_returns_json_errors(self):
-        self.assertEqual(self.book(time="23:00").status_code, 400)
-        res = self.book()
-        self.assertEqual(res.status_code, 200)
-        self.assertTrue(res.get_json()["ok"])
-        self.assertEqual(self.book(name="Second At Same Slot", phone="9812349813")
-                         .status_code, 409)
-
-    def test_malformed_body_is_json_400(self):
-        res = self.client.post("/api/book", data="{ not json",
-                               content_type="application/json")
-        self.assertIn(res.status_code, (400, 415))
-        self.assertIn("error", res.get_json())
-
-    def test_availability_endpoint(self):
+    def test_availability_reflects_what_is_actually_free(self):
         self.db.book_appointment(1, self.tomorrow, "09:30", "A Person", "9812349812")
-        data = self.client.get(f"/api/availability?doctor_id=1&date={self.tomorrow}").get_json()
-        self.assertNotIn("09:30", data["free"])
-        self.assertIn("10:15", data["free"])
+        free = self.db.free_slots(1, self.tomorrow)
+        self.assertNotIn("09:30", free)
+        self.assertIn("10:15", free)
 
-    def test_availability_rejects_past_date(self):
-        res = self.client.get("/api/availability?doctor_id=1&date=2020-01-01")
-        self.assertEqual(res.status_code, 400)
+    def test_past_date_is_rejected_before_any_write(self):
+        with self.assertRaises(self.db.BookingError):
+            self.db.validate_date("2020-01-01")
 
 
 class TestDoctorAuthentication(_TempDatabase):
     def test_each_doctor_has_own_password(self):
-        self.assertEqual(self.login(1).status_code, 302)
-        self.assertEqual(self.client.post("/doctor", data={"doctor_id": 2,
-                                                          "password": "citycare1123"}
-                                          ).status_code, 401)
-        self.assertEqual(self.login(2).status_code, 302)
+        pw = self.db.default_demo_password
+        self.assertTrue(self.db.verify_doctor_password(1, pw(1)))
+        self.assertFalse(self.db.verify_doctor_password(2, pw(1)))
+        self.assertTrue(self.db.verify_doctor_password(2, pw(2)))
 
-    def test_wrong_password_does_not_create_session(self):
-        res = self.client.post("/doctor", data={"doctor_id": 1, "password": "guess"})
-        self.assertEqual(res.status_code, 401)
-        self.assertEqual(self.client.get("/api/bookings").status_code, 401)
+    def test_wrong_password_or_unknown_doctor_is_rejected(self):
+        pw = self.db.default_demo_password
+        self.assertFalse(self.db.verify_doctor_password(1, "guess"))
+        self.assertFalse(self.db.verify_doctor_password(1, ""))
+        self.assertFalse(self.db.verify_doctor_password(1, pw(2)))
+        self.assertFalse(self.db.verify_doctor_password(99, pw(1)))
 
     def test_passwords_are_stored_hashed(self):
         con = self.db.get_db()
@@ -205,88 +170,81 @@ class TestDoctorAuthentication(_TempDatabase):
         self.assertNotIn("citycare", stored)
         self.assertIn(stored.split(":")[0], ("pbkdf2", "scrypt", "argon2"))
 
-    def test_set_password_changes_login(self):
+    def test_set_password_changes_what_verifies(self):
         from werkzeug.security import generate_password_hash
         con = self.db.get_db()
         con.execute("UPDATE doctors SET pass_hash=? WHERE id=1",
                     (generate_password_hash("newsecret1"),))
         con.commit()
         con.close()
-        self.assertEqual(self.client.post("/doctor", data={"doctor_id": 1,
-                                                           "password": "newsecret1"}
-                                          ).status_code, 302)
-
-    def test_session_cookie_secure_is_env_driven(self):
-        """SESSION_COOKIE_SECURE=1 adds the Secure flag; the default must not."""
-        import importlib
-
-        def login_cookie(module):
-            return module.app.test_client().post(
-                "/doctor", data={"doctor_id": 1,
-                                 "password": self.db.default_demo_password(1)}
-            ).headers["Set-Cookie"]
-
-        self.assertNotIn("Secure", login_cookie(self.app))
-        saved = os.environ.pop("SESSION_COOKIE_SECURE", None)
-        try:
-            os.environ["SESSION_COOKIE_SECURE"] = "1"
-            self.assertIn("Secure", login_cookie(importlib.reload(self.app)))
-        finally:
-            os.environ.pop("SESSION_COOKIE_SECURE", None)
-            if saved is not None:
-                os.environ["SESSION_COOKIE_SECURE"] = saved
-            importlib.reload(self.app)
+        self.assertTrue(self.db.verify_doctor_password(1, "newsecret1"))
+        self.assertFalse(self.db.verify_doctor_password(1, self.db.default_demo_password(1)))
 
 
 class TestOwnership(_TempDatabase):
+    """Only the treating doctor may change a booking - enforced in the data layer."""
+
     def test_cannot_change_another_doctors_booking(self):
-        other = self.db.book_appointment(2, self.tomorrow, "10:00", "A Person", "9812349812")
-        self.login(1)
-        res = self.client.post("/api/booking/status",
-                               json={"booking_id": other, "status": "Completed"})
-        self.assertEqual(res.status_code, 403)
+        other = self.db.book_appointment(2, self.tomorrow, "10:00", "A Person",
+                                         "9812349812")
+        with self.assertRaises(self.db.BookingError):
+            self.db.update_booking_status(other, "Completed", owner_id=1)
         self.assertEqual(self.db.get_booking(other)["status"], "Confirmed")
 
     def test_own_booking_can_be_completed(self):
-        mine = self.db.book_appointment(1, self.tomorrow, "09:30", "A Person", "9812349812")
-        self.login(1)
-        res = self.client.post("/api/booking/status",
-                               json={"booking_id": mine, "status": "Completed"})
-        self.assertTrue(res.get_json()["ok"])
+        mine = self.db.book_appointment(1, self.tomorrow, "09:30", "A Person",
+                                        "9812349812")
+        self.db.update_booking_status(mine, "Completed", owner_id=1)
         self.assertEqual(self.db.get_booking(mine)["status"], "Completed")
 
-    def test_unknown_booking_id_is_404(self):
-        self.login(1)
-        self.assertEqual(self.client.post("/api/booking/status",
-                                          json={"booking_id": "CC000000",
-                                                "status": "Completed"}).status_code, 404)
+    def test_unknown_booking_id_changes_nothing(self):
+        with self.assertRaises(self.db.BookingError):
+            self.db.update_booking_status("CC000000", "Completed", owner_id=1)
 
-    def test_bad_status_value_is_400(self):
-        self.login(1)
-        self.assertEqual(self.client.post("/api/booking/status",
-                                          json={"booking_id": "CC1",
-                                                "status": "Nonsense"}).status_code, 400)
+    def test_bad_status_value_is_rejected(self):
+        mine = self.db.book_appointment(1, self.tomorrow, "09:30", "A Person",
+                                        "9812349812")
+        with self.assertRaises(self.db.BookingError):
+            self.db.update_booking_status(mine, "Nonsense", owner_id=1)
+        self.assertEqual(self.db.get_booking(mine)["status"], "Confirmed")
 
-    def test_other_doctors_patient_page_is_read_only(self):
-        other = self.db.book_appointment(2, self.tomorrow, "10:00", "A Person", "9812349812")
-        self.login(1)
-        page = self.client.get(f"/doctor/patient/{other}").get_data(as_text=True)
-        self.assertIn("only the treating doctor", page)
-        self.assertNotIn("Mark completed", page)
-
-    def test_own_patient_page_shows_actions(self):
-        mine = self.db.book_appointment(1, self.tomorrow, "09:30", "A Person", "9812349812")
-        self.login(1)
-        page = self.client.get(f"/doctor/patient/{mine}").get_data(as_text=True)
-        self.assertIn("Mark completed", page)
-
-    def test_bookings_api_only_returns_own_rows(self):
+    def test_mine_versus_all_scopes_return_the_right_rows(self):
         self.db.book_appointment(1, self.tomorrow, "09:30", "Mine", "9812349812")
         self.db.book_appointment(2, self.tomorrow, "10:00", "Theirs", "9812349813")
-        self.login(1)
-        rows = self.client.get("/api/bookings").get_json()
-        self.assertEqual([r["patient_name"] for r in rows], ["Mine"])
-        self.assertEqual(len(self.client.get("/api/bookings?view=all").get_json()), 2)
+        self.assertEqual([r["patient_name"]
+                          for r in self.db.doctor_bookings(doc_id=1)], ["Mine"])
+        self.assertEqual(len(self.db.doctor_bookings()), 2)
+        self.assertEqual(self.db.count_doctor_bookings(doc_id=1), 1)
+        self.assertEqual(self.db.count_doctor_bookings(), 2)
+
+
+class TestQueryWindows(_TempDatabase):
+    def _fill(self, count, doctor_id=1):
+        slots = self.db.get_doctor(doctor_id)["slots"]
+        for i in range(count):
+            day = (date.today() + timedelta(days=1 + i // len(slots))).strftime("%Y-%m-%d")
+            self.insert(doctor_id, day, slots[i % len(slots)], phone=str(9812340000 + i))
+
+    def test_pages_do_not_overlap_or_leak(self):
+        self._fill(28)
+        page1 = self.db.doctor_bookings(doc_id=1, limit=25, offset=0)
+        page2 = self.db.doctor_bookings(doc_id=1, limit=25, offset=25)
+        self.assertEqual((len(page1), len(page2)), (25, 3))
+        ids1 = {r["booking_id"] for r in page1}
+        self.assertFalse(ids1 & {r["booking_id"] for r in page2})
+
+    def test_total_counts_every_row_not_just_the_page(self):
+        self._fill(28)
+        self.assertEqual(self.db.count_doctor_bookings(doc_id=1, status="Confirmed"), 28)
+        self.assertEqual(len(self.db.doctor_bookings(doc_id=1, limit=25)), 25)
+
+    def test_status_filter_is_applied_before_the_window(self):
+        self._fill(6)
+        extra = self.db.get_booking(self.insert(1, self.tomorrow, "12:30", status="Cancelled",
+                                                phone="9999990000"))
+        self.assertEqual(extra["status"], "Cancelled")
+        self.assertEqual(self.db.count_doctor_bookings(doc_id=1, status="Confirmed"), 6)
+        self.assertEqual(len(self.db.doctor_bookings(doc_id=1, status="Cancelled")), 1)
 
 
 class TestChatbot(_TempDatabase):
@@ -366,13 +324,8 @@ class TestReminders(_TempDatabase):
         self.insert(2, day2, time2, status="Cancelled")
         self.assertEqual(process_due_reminders(), {"24h": 0, "2h": 0})
 
-    def test_sweep_endpoint_needs_login(self):
-        self.assertEqual(self.client.post("/api/reminders/run").status_code, 401)
-        self.login(1)
-        self.assertTrue(self.client.post("/api/reminders/run").get_json()["ok"])
-
     def test_send_failure_does_not_break_booking(self):
-        """A Twilio outage must not turn a created booking into a 500."""
+        """A Twilio outage must never lose a booking that was already created."""
         import reminders
 
         class DeadApi:
@@ -381,57 +334,31 @@ class TestReminders(_TempDatabase):
                 def create(*args, **kwargs):
                     raise RuntimeError("twilio down")
 
+        bid = self.db.book_appointment(1, self.tomorrow,
+                                       self.db.get_doctor(1)["slots"][0],
+                                       "Test Patient", "9812345678")
         original = reminders._client
         reminders._client = lambda: DeadApi()
         try:
-            res = self.book()
+            reminders.send_confirmation(bid, "Dr. Priya Sharma", self.tomorrow,
+                                        "10:00", "Test Patient", "9812345678")
         finally:
             reminders._client = original
-        self.assertEqual(res.status_code, 200)
         self.assertEqual(len(self.db.list_bookings()), 1)
+        self.assertIsNotNone(self.db.get_booking(bid))
 
 
-class TestDashboardPaging(_TempDatabase):
-    def _fill(self, count, doctor_id=1):
-        slots = self.db.get_doctor(doctor_id)["slots"]
-        for i in range(count):
-            day = (date.today() + timedelta(days=1 + i // len(slots))).strftime("%Y-%m-%d")
-            self.insert(doctor_id, day, slots[i % len(slots)], phone=str(9812340000 + i))
+class TestVolumeBoot(_TempDatabase):
+    """A host mounts a volume: the folder can exist while the file inside does not."""
 
-    def test_page_size_is_capped_but_total_counts_everything(self):
-        self._fill(self.app.PER_PAGE + 5)
-        self.login(1)
-        page1 = self.client.get("/doctor/dashboard").get_data(as_text=True)
-        self.assertIn(f"{self.app.PER_PAGE + 5} appointments in this view", page1)
-        self.assertIn("Page 1 / 2", page1)
-        self.assertEqual(page1.count(">View</a>"), self.app.PER_PAGE)
-        page2 = self.client.get("/doctor/dashboard?page=2").get_data(as_text=True)
-        self.assertIn("Page 2 / 2", page2)
-        self.assertEqual(page2.count(">View</a>"), 5)
-
-    def test_page_number_is_clamped_to_the_last_page(self):
-        self._fill(self.app.PER_PAGE + 5)
-        self.login(1)
-        body = self.client.get("/doctor/dashboard?page=999").get_data(as_text=True)
-        self.assertIn("Page 2 / 2", body)
-        self.assertEqual(body.count(">View</a>"), 5)
-
-    def test_short_list_has_no_pager(self):
-        self._fill(3)
-        self.login(1)
-        body = self.client.get("/doctor/dashboard?page=999").get_data(as_text=True)
-        self.assertIn("3 appointments in this view", body)
-        self.assertNotIn("pager-nav", body)
-        self.assertEqual(body.count(">View</a>"), 3)
-
-    def test_pager_links_keep_the_active_filters(self):
-        self._fill(self.app.PER_PAGE + 5)
-        self.login(1)
-        body = self.client.get("/doctor/dashboard?view=all&status=Confirmed&page=1") \
-                          .get_data(as_text=True)
-        self.assertIn('value="all"', body)
-        self.assertIn("/doctor/dashboard?view=all&amp;date=&amp;status=Confirmed"
-                      "&amp;page=2", body)
+    def test_clinic_db_in_a_new_folder_is_created(self):
+        import shutil
+        sub = os.path.join(tempfile.mkdtemp(prefix="clinicdb-"), "data", "clinic.db")
+        self.addCleanup(shutil.rmtree, os.path.dirname(sub), True)
+        self.db.DB = sub
+        self.db.init_db()
+        self.assertTrue(os.path.exists(sub))
+        self.assertEqual(self.db.all_doctors()[0]["name"], "Dr. Priya Sharma")
 
 
 if __name__ == "__main__":
