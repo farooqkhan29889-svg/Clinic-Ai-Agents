@@ -1,0 +1,6 @@
+# CityCare Clinic - Streamlit requirements
+streamlit>=1.40.0,<=1.66.0
+Werkzeug>=3.0.0
+
+# Optional: real WhatsApp/SMS sending via Twilio
+# twilio>=9.0.0

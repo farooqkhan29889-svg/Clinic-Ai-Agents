@@ -1,0 +1,20 @@
+# Clinic database
+clinic.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Legacy / temporary
+clinic-website/
+node_modules/
+
+# Logs & secrets
+*.log
+.env
+.streamlit/secrets.toml
