@@ -22,8 +22,10 @@ Add demo appointments (optional): `python seed_demo.py`
 | test_clinic.py | Tests for the data layer, chatbot and reminders |
 | test_streamlit_app.py | Tests that drive the UI widgets |
 
-`.streamlit/config.toml` carries the theme (teal `#0f766e`); the old Flask/Jinja
-front end (`app.py`, `templates/`, `static/`) has been deleted - Streamlit is the
+`.streamlit/config.toml` carries the theme (teal `#0f766e`, radii, widget borders) and
+`_CSS` at the top of `streamlit_app.py` carries the page styling (banner, status pills,
+info chips, metric cards, sidebar nav). The old Flask/Jinja front end (`app.py`,
+`templates/`, `static/`) has been deleted - Streamlit is the
 only UI, and it calls the Python functions directly instead of going through an
 HTTP `/api` layer.
 
