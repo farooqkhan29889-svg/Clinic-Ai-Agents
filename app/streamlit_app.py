@@ -1,4 +1,5 @@
 """CityCare Clinic: a complete, template-inspired appointment website."""
+import base64
 import html
 import os
 import uuid
@@ -17,8 +18,16 @@ from reminders import process_due_reminders, send_confirmation, send_sms, send_w
 st.set_page_config(page_title="CityCare Clinic", page_icon="🏥", layout="wide")
 init_db()
 STATUSES = ("Confirmed", "Completed", "Cancelled")
-HERO_IMAGE = "https://images.unsplash.com/photo-1758691461935-202e2ef6b69f?auto=format&fit=crop&w=1400&q=85"
-CARE_IMAGE = "https://images.unsplash.com/photo-1576091160550-2173dba999ef?auto=format&fit=crop&w=900&q=85"
+ASSET_DIR = Path(__file__).parent / "assets"
+
+
+def image_data_uri(filename):
+    image_bytes = (ASSET_DIR / filename).read_bytes()
+    return "data:image/webp;base64," + base64.b64encode(image_bytes).decode("ascii")
+
+
+HERO_IMAGE = image_data_uri("clinic-consultation.webp")
+CARE_IMAGE = image_data_uri("doctor-patient-care.webp")
 
 _CSS = """
 <style>
