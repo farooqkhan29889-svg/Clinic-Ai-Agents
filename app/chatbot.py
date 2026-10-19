@@ -20,8 +20,8 @@ from reminders import send_sms, send_whatsapp
 
 CLINIC = {
     "name": "CityCare Clinic",
-    "phone": "+91 98765 43210",
-    "address": "12 MG Road, near City Mall, Bengaluru 560001",
+    "phone": "+91 87704 65561",
+    "address": "Shop No. 4, near Saeed Colony, Housing Board, Karond, Bhopal",
     "hours": "Mon - Sat: 9:00 AM - 8:00 PM",
 }
 
@@ -138,8 +138,8 @@ def _dispatch(s, t, doctors):
     # nudge them back to the step they were on
     if ctx.get("flow") == "book":
         return _nudge(s, doctors)
-    return _r("I can help with <b>bookings, doctors, fees, timings, location, lab tests, "
-              "cancellations and reminders</b>. Try one of these:",
+    return _r("I can help with <b>appointments, doctor details, fees, clinic hours, "
+              "location and cancellations</b>. Try one of these:",
               [{"t": q[0], "m": q[1]} for q in QUICK])
 
 
@@ -182,31 +182,29 @@ def _intent(s, t, doctors):
 
     if re.search(r"fee|cost|price|charge", t):
         lines = "<br>".join(f"&#8226; {d['name']} - <b>&#8377;{d['fee']}</b>" for d in doctors)
-        return _r(f"Consultation fees:<br>{lines}<br>Follow-up within 7 days is free.")
+        return _r(f"Listed consultation fees:<br>{lines}")
 
     if re.search(r"time|hour|open|timing|when", t):
-        return _r(f"We're open <b>{CLINIC['hours']}</b>. Sunday closed. "
-                  f"Online booking is open 24/7.")
+        return _r(f"Clinic hours: <b>{CLINIC['hours']}</b>. Sunday closed. "
+                  "Appointment availability is shown on the booking page.")
 
     if re.search(r"where|address|location|direction|parking", t):
-        return _r(f"<b>{CLINIC['address']}</b><br>Landmark: opposite metro gate 2. "
-                  f"Free parking for patients.")
+        return _r(f"<b>{CLINIC['address']}</b><br>Call {CLINIC['phone']} if you need directions.")
 
     if re.search(r"remind|notification|whatsapp|sms", t):
-        return _r("Every booking gets:<br>&#8226; Instant WhatsApp + SMS confirmation"
-                  "<br>&#8226; Reminder <b>24h</b> before your visit"
-                  "<br>&#8226; A nudge <b>2h</b> before with your booking ID")
+        return _r("Your booking reference appears after the appointment is saved. "
+                  "For appointment changes, contact the clinic with your reference.")
 
     if re.search(r"lab|test|blood|x-?ray|report", t):
-        return _r("Our in-house lab does blood tests, X-ray and sonography with <b>same-day "
-                  "digital reports</b> on WhatsApp. Walk in any time for routine tests.")
+        return _r(f"Please call the clinic at <b>{CLINIC['phone']}</b> to ask which tests "
+                  "or services are currently available.")
 
     if re.search(r"emergency|urgent", t):
-        return _r(f"For emergencies call <b>{CLINIC['phone']}</b> immediately. For everything "
-                  f"else, I can book you the earliest slot - usually within 2 hours.")
+        return _r("For urgent or emergency medical care, contact your local emergency "
+                  "service. This assistant only helps with clinic information and bookings.")
 
     if re.search(r"doctor|specialist|cardio|derma|pedia|gyn|ortho|physician", t):
-        lines = "<br>".join(f"&#8226; <b>{d['name']}</b> - {d['spec']}, {d['exp']} yrs, "
+        lines = "<br>".join(f"&#8226; <b>{d['name']}</b> - {d['spec']}, "
                             f"&#8377;{d['fee']}" for d in doctors)
         return _r("Our specialists:<br>" + lines,
                   [{"t": "Book now", "m": "I want to book an appointment"}])
@@ -303,9 +301,9 @@ def _booking_step(s, t, doctors):
                           f"for {day['label']} at {ctx['time']}. Booking ID {booking_id}. "
                           f"- CityCare")
     send_sms(digits, f"CityCare: {doc['name']}, {day['label']} {ctx['time']}. ID {booking_id}.")
-    return _r(f"Done! <b>{doc['name']}</b>, <b>{day['label']} at {ctx['time']}</b>. "
-              f"Booking ID <b>{booking_id}</b>.<br><br>WhatsApp + SMS confirmation sent to "
-              f"+91 {digits}. Reminders will follow 24h and 2h before your visit.")
+    return _r(f"Your appointment with <b>{doc['name']}</b> is saved for "
+              f"<b>{day['label']} at {ctx['time']}</b>. Booking reference "
+              f"<b>{booking_id}</b>. Keep it for questions or changes.")
 
 
 # ================= cancellation flow =================
@@ -341,5 +339,4 @@ def _cancel_step(s, t):
     send_whatsapp(b["phone"], msg)
     send_sms(b["phone"], msg)
     return _r(f"Cancelled <b>{bid}</b> ({b['doctor_name']}, {b['appt_date']} at "
-              f"{b['appt_time']}). WhatsApp + SMS sent to the registered number. "
-              f"Want to pick a new slot?")
+              f"{b['appt_time']}). Would you like to choose a new slot?")

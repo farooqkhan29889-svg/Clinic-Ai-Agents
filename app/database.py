@@ -14,15 +14,12 @@ from werkzeug.security import check_password_hash, generate_password_hash
 
 DB = os.getenv("CLINIC_DB") or os.path.join(os.path.dirname(__file__), "clinic.db")
 
-DOCTOR_COLS = ("id, name, spec, exp, fee, color, about, slots")
+DOCTOR_COLS = ("id, name, spec, exp, fee, color, about, slots, is_active")
 
 DOCTORS_SEED = [
-    {"id":1,"name":"Dr. Priya Sharma","spec":"General physician","exp":12,"fee":500,"color":"#0f766e","about":"Cold, fever, diabetes management and preventive checkups.","slots":["09:30","10:15","11:00","12:30","14:30","16:00","17:30"]},
-    {"id":2,"name":"Dr. Arun Patel","spec":"Cardiologist","exp":15,"fee":1200,"color":"#b91c1c","about":"Heart health, blood pressure and ECG review.","slots":["10:00","11:30","15:00","17:30"]},
-    {"id":3,"name":"Dr. Meera Iyer","spec":"Dermatologist","exp":9,"fee":800,"color":"#15803d","about":"Skin, hair, allergy and cosmetic dermatology.","slots":["09:00","10:30","13:30","15:30","18:00"]},
-    {"id":4,"name":"Dr. Rahul Verma","spec":"Pediatrician","exp":11,"fee":700,"color":"#6d28d9","about":"Child health, vaccination and growth tracking.","slots":["09:30","11:00","12:30","16:30","18:30"]},
-    {"id":5,"name":"Dr. Kavitha Nair","spec":"Gynecologist","exp":14,"fee":900,"color":"#be185d","about":"Women's health, pregnancy care and PCOS.","slots":["10:00","11:30","14:00","16:00","17:30"]},
-    {"id":6,"name":"Dr. Sanjay Kulkarni","spec":"Orthopedist","exp":18,"fee":1000,"color":"#b45309","about":"Joint pain, fractures and sports injuries.","slots":["09:30","11:30","13:00","15:30","17:00"]},
+    {"id":1,"name":"Dr. Misbah Ambar","spec":"BHUMS","exp":None,"fee":300,"color":"#cd5f37","about":"Clinic consultation.","slots":["09:30","10:15","11:00","12:30","14:30","16:00","17:30"],"is_active":1},
+    {"id":2,"name":"Dr. Farooq","spec":"MBBS","exp":None,"fee":500,"color":"#8b3f25","about":"Clinic consultation.","slots":["10:00","11:30","15:00","17:30"],"is_active":1},
+    {"id":3,"name":"Dr. Arshad","spec":"Haddi Specialist","exp":None,"fee":400,"color":"#b56a48","about":"Clinic consultation.","slots":["09:00","10:30","13:30","15:30","18:00"],"is_active":1},
 ]
 
 STATUSES = ("Confirmed", "Completed", "Cancelled")
@@ -55,7 +52,7 @@ def init_db():
     CREATE TABLE IF NOT EXISTS doctors(
         id INTEGER PRIMARY KEY, name TEXT, spec TEXT, exp INTEGER,
         fee INTEGER, color TEXT, about TEXT, slots TEXT,
-        pass_hash TEXT);
+        pass_hash TEXT, is_active INTEGER NOT NULL DEFAULT 1);
     CREATE TABLE IF NOT EXISTS bookings(
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         booking_id TEXT UNIQUE, doctor_id INTEGER,
@@ -74,15 +71,17 @@ def init_db():
     doc_cols = [r["name"] for r in con.execute("PRAGMA table_info(doctors)")]
     if "pass_hash" not in doc_cols:      # upgrade a clinic.db created before hashing
         con.execute("ALTER TABLE doctors ADD COLUMN pass_hash TEXT")
+    if "is_active" not in doc_cols:
+        con.execute("ALTER TABLE doctors ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1")
 
     if con.execute("SELECT COUNT(*) c FROM doctors").fetchone()["c"] == 0:
         for d in DOCTORS_SEED:
             con.execute(
-                "INSERT INTO doctors(id,name,spec,exp,fee,color,about,slots,pass_hash)"
-                " VALUES(?,?,?,?,?,?,?,?,?)",
+                "INSERT INTO doctors(id,name,spec,exp,fee,color,about,slots,pass_hash,is_active)"
+                " VALUES(?,?,?,?,?,?,?,?,?,?)",
                 (d["id"], d["name"], d["spec"], d["exp"], d["fee"], d["color"],
                  d["about"], json.dumps(d["slots"]),
-                 generate_password_hash(default_demo_password(d["id"]))))
+                 generate_password_hash(default_demo_password(d["id"])), 1))
     else:                               # seed passwords for rows that have none
         for r in con.execute("SELECT id, pass_hash FROM doctors").fetchall():
             if not r["pass_hash"]:
@@ -146,14 +145,14 @@ def _doctor_from_row(row):
 
 def all_doctors():
     con = get_db()
-    rows = con.execute(f"SELECT {DOCTOR_COLS} FROM doctors ORDER BY id").fetchall()
+    rows = con.execute(f"SELECT {DOCTOR_COLS} FROM doctors WHERE is_active=1 ORDER BY id").fetchall()
     con.close()
     return [_doctor_from_row(r) for r in rows]
 
 
 def get_doctor(doc_id):
     con = get_db()
-    row = con.execute(f"SELECT {DOCTOR_COLS} FROM doctors WHERE id=?",
+    row = con.execute(f"SELECT {DOCTOR_COLS} FROM doctors WHERE id=? AND is_active=1",
                       (doc_id,)).fetchone()
     con.close()
     return _doctor_from_row(row) if row else None
@@ -161,7 +160,7 @@ def get_doctor(doc_id):
 
 def verify_doctor_password(doc_id, password):
     con = get_db()
-    row = con.execute("SELECT pass_hash FROM doctors WHERE id=?", (doc_id,)).fetchone()
+    row = con.execute("SELECT pass_hash FROM doctors WHERE id=? AND is_active=1", (doc_id,)).fetchone()
     con.close()
     return bool(row and row["pass_hash"] and
                 check_password_hash(row["pass_hash"], password or ""))
@@ -232,10 +231,10 @@ def list_bookings(doc_id=None, limit=None, offset=0):
     sql = ("SELECT b.id, b.booking_id, b.doctor_id, b.appt_date, b.appt_time,"
            " b.patient_name, b.phone, b.email, b.reason, b.status, b.created_at,"
            " d.name doctor_name, d.spec FROM bookings b"
-           " JOIN doctors d ON d.id=b.doctor_id")
+           " JOIN doctors d ON d.id=b.doctor_id WHERE d.is_active=1")
     params = []
     if doc_id is not None:
-        sql += " WHERE b.doctor_id=?"
+        sql += " AND b.doctor_id=?"
         params.append(doc_id)
     sql += " ORDER BY b.id DESC"
     if limit:
@@ -249,7 +248,8 @@ def list_bookings(doc_id=None, limit=None, offset=0):
 
 # ---------- doctor panel ----------
 def _booking_filters(doc_id, date, status):
-    where, params = ["1=1"], []
+    where, params = ["EXISTS (SELECT 1 FROM doctors active_doc "
+                     "WHERE active_doc.id=b.doctor_id AND active_doc.is_active=1)"], []
     if doc_id:
         where.append("b.doctor_id=?"); params.append(doc_id)
     if date:
