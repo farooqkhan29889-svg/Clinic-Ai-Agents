@@ -39,6 +39,7 @@ h1,h2,h3,h4{color:var(--cocoa);font-family:'Poppins',Arial,sans-serif;font-weigh
 [data-testid="stRadio"]>div[role="radiogroup"]::-webkit-scrollbar{display:none}
 [data-testid="stRadio"] label{flex:0 0 auto;padding:.48rem .85rem;border-radius:999px;white-space:nowrap;color:#64554d;font-size:.8rem;transition:.18s ease}
 [data-testid="stRadio"] label:hover,[data-testid="stRadio"] label:has(input:checked){background:var(--pale);color:var(--terra-dark)}
+[data-testid="stRadio"] label:nth-of-type(4){background:var(--terra);color:#fff!important;font-weight:700;box-shadow:0 5px 14px #a8472428}[data-testid="stRadio"] label:nth-of-type(4):hover,[data-testid="stRadio"] label:nth-of-type(4):has(input:checked){background:var(--terra-dark);color:#fff!important}
 [data-testid="stRadio"] label div:first-child,[data-testid="stRadio"] label input[type="radio"]{display:none!important}
 .cc-home-hero{display:grid;grid-template-columns:1.05fr .95fr;min-height:450px;margin:1.2rem 0 1.1rem;overflow:hidden;border:1px solid #eaded8;border-radius:24px;background:linear-gradient(115deg,#fffdfa 0%,#fffdfa 57%,#f4e8e3 100%);color:var(--ink);box-shadow:0 22px 58px #481e0b10}
 .cc-home-copy{display:flex;flex-direction:column;justify-content:center;padding:3.25rem 2.5rem 3.25rem 3.1rem}.cc-kicker{margin-bottom:.95rem;color:var(--terra-dark);font-family:'Poppins',sans-serif;font-size:.68rem;font-weight:700;letter-spacing:.18em;text-transform:uppercase}
@@ -109,7 +110,9 @@ def hero(title, subtitle, eyebrow="CITYCARE CLINIC", chips=()):
 
 
 def go_to(label):
-    st.session_state["site_nav"] = label
+    # Store navigation intent for the next run. The radio widget owns its key
+    # after it is created, so changing it in the same run raises a Streamlit error.
+    st.session_state["pending_site_nav"] = label
     st.rerun()
 
 
@@ -132,6 +135,9 @@ st.markdown('<div class="cc-topbar">'
 
 nav = {"Home":"Home", "Our doctors":"Doctors and fees", "Services":"Clinic information",
        "Appointments":"Book appointment", "Contact":"Contact", "Assistant":"Chat assistant", "Staff":"Doctor panel"}
+pending_nav = st.session_state.pop("pending_site_nav", None)
+if pending_nav in nav:
+    st.session_state["site_nav"] = pending_nav
 nav_label = st.radio("Main navigation", list(nav), horizontal=True, key="site_nav", label_visibility="collapsed")
 page = nav[nav_label]
 doctors = all_doctors()
