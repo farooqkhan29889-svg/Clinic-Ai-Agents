@@ -77,7 +77,9 @@ def init_db():
     if con.execute("SELECT COUNT(*) c FROM doctors").fetchone()["c"] == 0:
         for d in DOCTORS_SEED:
             con.execute(
-                "INSERT INTO doctors(id,name,spec,exp,fee,color,about,slots,pass_hash,is_active)"
+                # Two Streamlit workers can initialize a brand-new database at
+                # the same time. Ignore seed rows another worker already added.
+                "INSERT OR IGNORE INTO doctors(id,name,spec,exp,fee,color,about,slots,pass_hash,is_active)"
                 " VALUES(?,?,?,?,?,?,?,?,?,?)",
                 (d["id"], d["name"], d["spec"], d["exp"], d["fee"], d["color"],
                  d["about"], json.dumps(d["slots"]),
