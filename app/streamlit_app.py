@@ -7,7 +7,6 @@ from datetime import date, timedelta
 from pathlib import Path
 
 import streamlit as st
-import streamlit.components.v1 as components
 
 from chatbot import CLINIC, chat_reply
 from database import (BookingError, SlotTakenError, all_doctors, book_appointment,
@@ -29,9 +28,13 @@ def image_data_uri(filename):
 
 HERO_IMAGE = image_data_uri("clinic-consultation.webp")
 CARE_IMAGE = image_data_uri("doctor-patient-care.webp")
-_floating_action_component = components.declare_component(
-    "citycare_floating_action",
-    path=str(Path(__file__).parent / "components" / "floating_action"),
+_floating_action_dir = Path(__file__).parent / "components" / "floating_action"
+_floating_action_component = st.components.v2.component(
+    name="citycare_floating_action",
+    html=(_floating_action_dir / "index.html").read_text(encoding="utf-8"),
+    css=(_floating_action_dir / "style.css").read_text(encoding="utf-8"),
+    js=(_floating_action_dir / "index.mjs").read_text(encoding="utf-8"),
+    isolate_styles=False,
 )
 
 _CSS = """
@@ -149,17 +152,14 @@ st.markdown('<div class="cc-topbar">'
 
 nav = {"Home":"Home", "Our doctors":"Doctors and fees", "Services":"Clinic information",
        "Appointments":"Book appointment", "Contact":"Contact", "Assistant":"Chat assistant", "Staff":"Doctor panel"}
-floating_events = (
-    _floating_action_component(id="booking", label="Book appointment", target="Appointments", key="floating_booking"),
-    _floating_action_component(id="assistant", label="Assistant", target="Assistant", key="floating_assistant"),
+floating_action_result = _floating_action_component(
+    key="citycare_floating_actions",
+    on_navigate_change=lambda: None,
+    height=0,
 )
-for floating_event in floating_events:
-    if isinstance(floating_event, dict):
-        event_token = floating_event.get("token")
-        event_target = floating_event.get("target")
-        if event_token and event_token != st.session_state.get("handled_floating_action") and event_target in nav:
-            st.session_state["handled_floating_action"] = event_token
-            st.session_state["site_nav"] = event_target
+floating_target = getattr(floating_action_result, "navigate", None)
+if floating_target in nav:
+    st.session_state["site_nav"] = floating_target
 pending_nav = st.session_state.pop("pending_site_nav", None)
 if pending_nav in nav:
     st.session_state["site_nav"] = pending_nav
