@@ -1,6 +1,13 @@
 export default function({ parentElement, setTriggerValue }) {
-  let root = document.getElementById("citycare-floating-actions");
-  if (!root) root = parentElement.querySelector("#citycare-floating-actions");
+  // Streamlit can rerun this component without immediately removing the
+  // previous DOM node (the root is moved out of the component container so
+  // the actions can stay fixed to the viewport). Always promote this render's
+  // root and discard stale copies before moving it into the document body.
+  let root = parentElement.querySelector("#citycare-floating-actions");
+  if (!root) root = document.getElementById("citycare-floating-actions");
+  document.querySelectorAll("#citycare-floating-actions").forEach(existing => {
+    if (existing !== root) existing.remove();
+  });
   if (root.parentElement !== document.body) document.body.appendChild(root);
   const buttons = Array.from(root.querySelectorAll(".citycare-floating-shortcut"));
   window.__citycareFloatingNavigate = setTriggerValue;

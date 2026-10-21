@@ -5,10 +5,10 @@ import os
 import uuid
 from datetime import date, timedelta
 from pathlib import Path
-
 import streamlit as st
 
 from chatbot import CLINIC, chat_reply
+from ai_agents import agent_reply
 from database import (BookingError, SlotTakenError, all_doctors, book_appointment,
                       count_doctor_bookings, default_demo_password, doctor_bookings,
                       free_slots, get_booking, get_doctor, init_db,
@@ -369,18 +369,35 @@ elif page == "Contact":
 
 
 elif page == "Chat assistant":
-    hero("Clinic assistant", "Ask about clinic information, doctors, fees, timings, or appointments.",
-         "HOW CAN WE HELP?", ["Clinic information", "Appointment support"])
+    hero("CityCare assistant", "Choose a specialist assistant to get started, or type a question below.",
+         "YOUR CLINIC HELP DESK", ["Appointments", "Clinic information", "Booking support"])
+    st.caption("Clinic information agents use the CityCare Clinic Information Guide and current doctor records.")
     st.session_state.setdefault("chat_id", uuid.uuid4().hex[:16])
     st.session_state.setdefault("chat_log", [])
     if not st.session_state.chat_log:
-        st.markdown("**Try asking**")
-        for col, question in zip(st.columns(4), ["Show doctors", "What are the fees?", "Clinic timings", "Book appointment"]):
-            if col.button(question, key=f"chat_hint_{question}"):
-                st.session_state.chat_log.append({"role":"user", "text":question})
-                reply = chat_reply(st.session_state.chat_id, question, doctors)
-                st.session_state.chat_log.append({"role":"assistant", "text":reply["reply"], "actions":reply["actions"]})
-                st.rerun()
+        st.markdown("**Choose how we can help**")
+        agents = [
+            ("📅  Appointment booking", "Choose a doctor and find a sample time slot.", "booking", "Book appointment"),
+            ("🩺  Doctors and fees", "Ask an AI agent to compare doctors, specialties, and fees.", "doctors", "Show doctors"),
+            ("ℹ️  Clinic information", "Ask an AI agent about hours, address, and visit information.", "clinic_info", "Clinic timings"),
+            ("↪  Manage a booking", "Start a secure cancellation using your booking ID and phone.", "manage", "Cancel my appointment"),
+        ]
+        for start in range(0, len(agents), 2):
+            cols = st.columns(2)
+            for col, (title, description, agent_id, question) in zip(cols, agents[start:start + 2]):
+                with col:
+                    with st.container(border=True):
+                        st.markdown(f"**{title}**")
+                        st.caption(description)
+                        if st.button("Start", key=f"agent_{start}_{question}", use_container_width=True):
+                            st.session_state.active_agent = agent_id
+                            st.session_state.chat_log.append({"role":"user", "text":question})
+                            if agent_id in ("booking", "manage"):
+                                reply = chat_reply(st.session_state.chat_id, question, doctors)
+                            else:
+                                reply = agent_reply(agent_id, st.session_state.chat_log)
+                            st.session_state.chat_log.append({"role":"assistant", "text":reply["reply"], "actions":reply["actions"]})
+                            st.rerun()
     for entry in st.session_state.chat_log:
         with st.chat_message(entry["role"]):
             text = html.escape(entry["text"], quote=False).replace("&lt;br&gt;", "\n\n")
@@ -390,7 +407,11 @@ elif page == "Chat assistant":
     prompt = st.chat_input("Ask about doctors, fees, clinic hours, or bookings")
     if prompt:
         st.session_state.chat_log.append({"role":"user", "text":prompt})
-        reply = chat_reply(st.session_state.chat_id, prompt, doctors)
+        agent_id = st.session_state.get("active_agent", "clinic_info")
+        if agent_id in ("booking", "manage"):
+            reply = chat_reply(st.session_state.chat_id, prompt, doctors)
+        else:
+            reply = agent_reply(agent_id, st.session_state.chat_log)
         st.session_state.chat_log.append({"role":"assistant", "text":reply["reply"], "actions":reply["actions"]})
         st.rerun()
     actions = st.session_state.chat_log[-1].get("actions", []) if st.session_state.chat_log else []
@@ -405,6 +426,7 @@ elif page == "Chat assistant":
     if st.button("Clear conversation", key="clear_chat"):
         st.session_state.chat_log = []
         st.session_state.pop("chat_id", None)
+        st.session_state.pop("active_agent", None)
         st.rerun()
 
 
