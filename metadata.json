@@ -1,0 +1,8 @@
+{
+  "name": "CityCare Clinic",
+  "description": "CityCare Clinic appointment booking system, doctor directory, staff portal, and AI clinic assistant.",
+  "capabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ],
+  "permissions": []
+}

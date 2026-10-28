@@ -1,7 +1,0 @@
-#citycare-floating-actions{position:fixed;inset:0;z-index:99999;pointer-events:none;font-family:Arial,sans-serif}
-.citycare-floating-shortcut{box-sizing:border-box;position:absolute;display:flex;align-items:center;justify-content:center;gap:.55rem;width:190px;height:54px;padding:0 26px 0 15px;border:1px solid #ffffffa8;border-radius:999px;background:linear-gradient(135deg,#c85d38,#a84724);box-shadow:0 9px 24px #481e0b35;color:#fff;font-size:14px;font-weight:700;white-space:nowrap;cursor:grab;touch-action:none;user-select:none;-webkit-user-select:none;pointer-events:auto;transition:box-shadow .18s,filter .18s}
-.citycare-floating-shortcut:hover{filter:brightness(1.06);box-shadow:0 12px 27px #481e0b45}
-.citycare-floating-shortcut:active{cursor:grabbing;transform:scale(.98)}
-.citycare-assistant-shortcut{background:linear-gradient(135deg,#176b50,#0c543e)}
-.citycare-action-symbol{display:grid;place-items:center;flex:0 0 24px;width:24px;height:24px;border:1px solid #ffffff75;border-radius:50%;font-size:15px;line-height:1}
-.citycare-action-grip{position:absolute;right:9px;top:50%;transform:translateY(-50%);font-size:11px;line-height:10px;letter-spacing:-2px;opacity:.72}
