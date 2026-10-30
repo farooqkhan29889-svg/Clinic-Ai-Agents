@@ -6,6 +6,7 @@ import {
   LabResult,
   Prescription,
   Booking,
+  PatientAccount,
 } from '../../types/clinic';
 import { PATIENT_PROFILES, getOrCreatePatientProfile } from '../../data/patientPortalData';
 import {
@@ -15,6 +16,18 @@ import {
   formatDayLabel,
   getUpcomingDays,
 } from '../../utils/storage';
+import {
+  getActivePatientSession,
+  setActivePatientSession,
+  loginPatient,
+  registerPatient,
+  sendSimulatedOtp,
+  verifyOtpAndLogin,
+  getBiometricSettings,
+  setBiometricSettings,
+  loginWithBiometrics,
+  BiometricPreference,
+} from '../../utils/authStorage';
 import {
   User,
   Phone,
@@ -39,8 +52,30 @@ import {
   Check,
   Plus,
   Star,
+  TrendingUp,
+  Eye,
+  EyeOff,
+  Lock,
+  Mail,
+  KeyRound,
+  UserPlus,
+  LogIn,
+  ArrowRight,
+  Video,
+  ScanFace,
+  Fingerprint,
+  SlidersHorizontal,
+  QrCode,
 } from 'lucide-react';
 import { FeedbackSection } from '../FeedbackSection';
+import { LabTrendsChart } from '../LabTrendsChart';
+import { PrescriptionList } from '../PrescriptionList';
+import { generateHealthSummaryPDF, generateSingleLabReportPDF } from '../../utils/pdfGenerator';
+import { BiometricModal } from '../BiometricModal';
+import { BiometricSettingsModal } from '../BiometricSettingsModal';
+import { CheckInQRModal } from '../CheckInQRModal';
+import { AppointmentQRCard } from '../AppointmentQRCard';
+import { HealthOverviewWidget } from '../HealthOverviewWidget';
 
 interface PatientPortalViewProps {
   onNavigate: (tab: NavTab, doctorId?: number) => void;
@@ -56,25 +91,107 @@ interface Countdown {
 }
 
 export const PatientPortalView: React.FC<PatientPortalViewProps> = ({ onNavigate }) => {
-  const [phoneNumber, setPhoneNumber] = useState<string>('9876543210');
-  const [activeProfile, setActiveProfile] = useState<PatientProfile | null>(() => {
-    return PATIENT_PROFILES['9876543210'] || null;
+  // Active session and profile
+  const [activeSession, setActiveSession] = useState<PatientAccount | null>(() => {
+    return getActivePatientSession();
   });
+  const [activeProfile, setActiveProfile] = useState<PatientProfile | null>(() => {
+    const session = getActivePatientSession();
+    if (session) {
+      return getOrCreatePatientProfile(session.phone, session.name);
+    }
+    return null;
+  });
+
+  // Auth navigation & form states
+  const [authTab, setAuthTab] = useState<'login' | 'register' | 'demo'>('login');
+  const [loginIdentifier, setLoginIdentifier] = useState<string>('9876543210');
+  const [loginPin, setLoginPin] = useState<string>('1234');
+  const [showPin, setShowPin] = useState<boolean>(false);
+
+  // New patient registration state
+  const [regName, setRegName] = useState<string>('');
+  const [regPhone, setRegPhone] = useState<string>('');
+  const [regEmail, setRegEmail] = useState<string>('');
+  const [regDob, setRegDob] = useState<string>('1995-06-15');
+  const [regGender, setRegGender] = useState<string>('Male');
+  const [regBloodGroup, setRegBloodGroup] = useState<string>('B+');
+  const [regPin, setRegPin] = useState<string>('1234');
+
+  // OTP Modal states
+  const [isOtpModalOpen, setIsOtpModalOpen] = useState<boolean>(false);
+  const [otpPhone, setOtpPhone] = useState<string>('9876543210');
+  const [otpCode, setOtpCode] = useState<string>('482910');
+  const [otpNotice, setOtpNotice] = useState<string | null>(null);
+
   const [activeSection, setActiveSection] = useState<
-    'upcoming' | 'history' | 'labs' | 'prescriptions' | 'feedback'
-  >('upcoming');
+    'overview' | 'upcoming' | 'history' | 'labs' | 'trends' | 'prescriptions' | 'feedback'
+  >('overview');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [downloadNotice, setDownloadNotice] = useState<string | null>(null);
+  const [isDownloadingSummary, setIsDownloadingSummary] = useState<boolean>(false);
   const [labFilter, setLabFilter] = useState<string>('All');
 
   // Upcoming appointments & Reminders
   const [upcomingBookings, setUpcomingBookings] = useState<Booking[]>([]);
   const [now, setNow] = useState<Date>(new Date());
   const [remindedBookingIds, setRemindedBookingIds] = useState<Set<string>>(new Set());
+  const [selectedQrBooking, setSelectedQrBooking] = useState<Booking | null>(null);
+  const [checkedInBookingIds, setCheckedInBookingIds] = useState<Set<string>>(new Set());
   const [notificationStatus, setNotificationStatus] = useState<{
     type: 'success' | 'warning' | 'info';
     message: string;
   } | null>(null);
+
+  // Biometric Authentication States
+  const [showBiometricSettings, setShowBiometricSettings] = useState<boolean>(false);
+  const [isBiometricScanning, setIsBiometricScanning] = useState<boolean>(false);
+  const [biometricScanTargetPhone, setBiometricScanTargetPhone] = useState<string>('9876543210');
+  const [biometricScanMode, setBiometricScanMode] = useState<'login' | 'enroll' | 'test'>('login');
+  const [biometricStatus, setBiometricStatus] = useState<BiometricPreference | null>(() => {
+    const session = getActivePatientSession();
+    if (session) {
+      return getBiometricSettings(session.phone);
+    }
+    return null;
+  });
+
+  // Sync biometric status whenever activeSession changes
+  useEffect(() => {
+    if (activeSession) {
+      setBiometricStatus(getBiometricSettings(activeSession.phone));
+    } else {
+      setBiometricStatus(null);
+    }
+  }, [activeSession]);
+
+  const handleBiometricLoginTrigger = (targetPhone?: string) => {
+    const rawTarget = targetPhone || loginIdentifier || '9876543210';
+    const target = rawTarget.replace(/\D/g, '').slice(-10) || '9876543210';
+    setBiometricScanTargetPhone(target);
+    setBiometricScanMode('login');
+    setErrorMsg(null);
+    setIsBiometricScanning(true);
+  };
+
+  const handleBiometricLoginSuccess = () => {
+    setIsBiometricScanning(false);
+    const target = biometricScanTargetPhone || loginIdentifier || '9876543210';
+    const res = loginWithBiometrics(target);
+    if (res.success && res.account) {
+      setActiveSession(res.account);
+      const profile = getOrCreatePatientProfile(res.account.phone, res.account.name);
+      setActiveProfile(profile);
+      setBiometricStatus(getBiometricSettings(res.account.phone));
+      setNotificationStatus({
+        type: 'success',
+        message: `Biometric passkey verified! Welcome back, ${res.account.name}.`,
+      });
+      setTimeout(() => setNotificationStatus(null), 4000);
+    } else {
+      setErrorMsg(res.error || 'Biometric authentication failed. Please sign in with your PIN.');
+    }
+  };
 
   // Keep live timer ticking every second
   useEffect(() => {
@@ -109,28 +226,132 @@ export const PatientPortalView: React.FC<PatientPortalViewProps> = ({ onNavigate
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg(null);
-    try {
-      const cleanPhone = normalizePhone(phoneNumber);
-      const profile = getOrCreatePatientProfile(cleanPhone);
+    const res = loginPatient(loginIdentifier, loginPin);
+    if (res.success && res.account) {
+      setActiveSession(res.account);
+      const profile = getOrCreatePatientProfile(res.account.phone, res.account.name);
       setActiveProfile(profile);
-    } catch (err: any) {
-      setErrorMsg(err.message || 'Please enter a valid 10-digit mobile number.');
+      setNotificationStatus({
+        type: 'success',
+        message: `Welcome back, ${res.account.name}! Patient records decrypted and loaded.`,
+      });
+      setTimeout(() => setNotificationStatus(null), 4000);
+    } else {
+      setErrorMsg(res.error || 'Invalid credentials.');
     }
   };
 
-  const handleQuickSelect = (phone: string) => {
-    setPhoneNumber(phone);
+  const handleRegister = (e: React.FormEvent) => {
+    e.preventDefault();
     setErrorMsg(null);
-    const profile = getOrCreatePatientProfile(phone);
-    setActiveProfile(profile);
+    const res = registerPatient({
+      name: regName,
+      phone: regPhone,
+      email: regEmail,
+      pin: regPin,
+      dob: regDob,
+      gender: regGender,
+      bloodGroup: regBloodGroup,
+    });
+    if (res.success && res.account) {
+      setActiveSession(res.account);
+      const profile = getOrCreatePatientProfile(res.account.phone, res.account.name);
+      setActiveProfile(profile);
+      setNotificationStatus({
+        type: 'success',
+        message: `Registration successful! Welcome to CityCare Clinic, ${res.account.name}.`,
+      });
+      setTimeout(() => setNotificationStatus(null), 4000);
+    } else {
+      setErrorMsg(res.error || 'Registration failed.');
+    }
+  };
+
+  const handleQuickSelect = (phone: string, pin = '1234') => {
+    setErrorMsg(null);
+    const res = loginPatient(phone, pin);
+    if (res.success && res.account) {
+      setActiveSession(res.account);
+      const profile = getOrCreatePatientProfile(res.account.phone, res.account.name);
+      setActiveProfile(profile);
+      setNotificationStatus({
+        type: 'success',
+        message: `Signed in as ${res.account.name}.`,
+      });
+      setTimeout(() => setNotificationStatus(null), 3000);
+    } else {
+      const clean = phone.replace(/\D/g, '').slice(-10);
+      const profile = getOrCreatePatientProfile(clean);
+      setActiveProfile(profile);
+    }
+  };
+
+  const handleOpenOtpModal = () => {
+    const target = loginIdentifier || '9876543210';
+    setOtpPhone(target);
+    const sim = sendSimulatedOtp(target);
+    setOtpCode('482910');
+    setOtpNotice(sim.message);
+    setIsOtpModalOpen(true);
+  };
+
+  const handleVerifyOtp = (e: React.FormEvent) => {
+    e.preventDefault();
+    setErrorMsg(null);
+    const res = verifyOtpAndLogin(otpPhone, otpCode);
+    if (res.success && res.account) {
+      setActiveSession(res.account);
+      const profile = getOrCreatePatientProfile(res.account.phone, res.account.name);
+      setActiveProfile(profile);
+      setIsOtpModalOpen(false);
+      setNotificationStatus({
+        type: 'success',
+        message: `OTP verified! Logged in as ${res.account.name}.`,
+      });
+      setTimeout(() => setNotificationStatus(null), 4000);
+    } else {
+      setErrorMsg(res.error || 'Invalid OTP code.');
+    }
   };
 
   const handleLogout = () => {
+    setActivePatientSession(null);
+    setActiveSession(null);
     setActiveProfile(null);
-    setPhoneNumber('');
     setErrorMsg(null);
     setDownloadNotice(null);
     setNotificationStatus(null);
+  };
+
+  const handleDownloadHealthSummary = () => {
+    if (!activeProfile) return;
+    setIsDownloadingSummary(true);
+    try {
+      generateHealthSummaryPDF(activeProfile);
+      setNotificationStatus({
+        type: 'success',
+        message: `Health Summary PDF for ${activeProfile.name} successfully generated and downloaded!`,
+      });
+    } catch (err: any) {
+      console.error('Error generating PDF:', err);
+      setErrorMsg('Failed to generate Health Summary PDF. Please try again.');
+    } finally {
+      setIsDownloadingSummary(false);
+    }
+  };
+
+  const handleDownloadLabPDF = (lab: LabResult) => {
+    if (!activeProfile) return;
+    try {
+      generateSingleLabReportPDF(activeProfile, lab);
+      setNotificationStatus({
+        type: 'success',
+        message: `Official Diagnostic Report for "${lab.testName}" (${lab.id}) downloaded successfully.`,
+      });
+    } catch (err: any) {
+      console.error('Error generating lab PDF:', err);
+      setErrorMsg('Failed to generate Lab Report PDF.');
+    }
   };
 
   const handleDownload = (filename: string) => {
@@ -302,19 +523,70 @@ export const PatientPortalView: React.FC<PatientPortalViewProps> = ({ onNavigate
         </div>
       )}
 
-      {/* Access Form if Not Logged In */}
+      {/* Patient Authentication Form if Not Logged In */}
       {!activeProfile ? (
         <div className="p-6 md:p-8 rounded-3xl bg-white dark:bg-[#1e1714] border border-[#d5e5db] dark:border-[#382b24] shadow-[0_8px_28px_rgba(72,30,11,0.06)] dark:shadow-[0_8px_28px_rgba(0,0,0,0.3)] max-w-xl mx-auto space-y-6 transition-colors">
           <div className="text-center space-y-1.5">
-            <div className="w-12 h-12 rounded-2xl bg-[#edf7f0] dark:bg-[#1a2d22] text-[#176541] dark:text-[#34d399] flex items-center justify-center mx-auto mb-2">
+            <div className="w-12 h-12 rounded-2xl bg-[#edf7f0] dark:bg-[#1a2d22] text-[#176541] dark:text-[#34d399] flex items-center justify-center mx-auto mb-2 shadow-xs">
               <ShieldCheck className="w-6 h-6" />
             </div>
             <h2 className="font-heading text-xl font-bold text-[#481e0b] dark:text-[#f7eee9]">
-              Access Your Health Records
+              Patient Health Portal
             </h2>
             <p className="text-xs text-[#786b65] dark:text-[#a89991]">
-              Enter the 10-digit mobile number registered with your clinic appointment.
+              Secure HIPAA-aligned access to your medical visits, lab reports, and prescriptions.
             </p>
+          </div>
+
+          {/* Segmented Auth Navigation Tabs */}
+          <div className="grid grid-cols-3 gap-1 p-1 rounded-2xl bg-[#f5ede8] dark:bg-[#281e19] border border-[#e4d4cb] dark:border-[#3d2e26]">
+            <button
+              type="button"
+              onClick={() => {
+                setAuthTab('login');
+                setErrorMsg(null);
+              }}
+              className={`py-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                authTab === 'login'
+                  ? 'bg-white dark:bg-[#1e1714] text-[#a84724] dark:text-[#f38360] shadow-xs'
+                  : 'text-[#786b65] dark:text-[#a89991] hover:text-[#481e0b]'
+              }`}
+            >
+              <LogIn className="w-3.5 h-3.5" />
+              <span>Sign In</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setAuthTab('register');
+                setErrorMsg(null);
+              }}
+              className={`py-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                authTab === 'register'
+                  ? 'bg-white dark:bg-[#1e1714] text-[#a84724] dark:text-[#f38360] shadow-xs'
+                  : 'text-[#786b65] dark:text-[#a89991] hover:text-[#481e0b]'
+              }`}
+            >
+              <UserPlus className="w-3.5 h-3.5" />
+              <span>Register</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setAuthTab('demo');
+                setErrorMsg(null);
+              }}
+              className={`py-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                authTab === 'demo'
+                  ? 'bg-white dark:bg-[#1e1714] text-[#176541] dark:text-[#34d399] shadow-xs'
+                  : 'text-[#786b65] dark:text-[#a89991] hover:text-[#176541]'
+              }`}
+            >
+              <Sparkles className="w-3.5 h-3.5" />
+              <span>Quick Demo</span>
+            </button>
           </div>
 
           {errorMsg && (
@@ -324,67 +596,361 @@ export const PatientPortalView: React.FC<PatientPortalViewProps> = ({ onNavigate
             </div>
           )}
 
-          <form onSubmit={handleLogin} className="space-y-4">
-            <div>
-              <label className="block text-xs font-bold uppercase tracking-wider text-[#481e0b] dark:text-[#f7eee9] mb-1.5">
-                Registered Mobile Number
-              </label>
-              <div className="relative">
+          {/* TAB 1: PATIENT SIGN IN */}
+          {authTab === 'login' && (
+            <form onSubmit={handleLogin} className="space-y-4 animate-in fade-in duration-150">
+              {/* Fast Biometric Sign-in Banner (if enabled on device or for entered account) */}
+              {(() => {
+                const targetPhone = (loginIdentifier || '9876543210').replace(/\D/g, '').slice(-10);
+                const bio = getBiometricSettings(targetPhone || '9876543210');
+                if (bio.enabled) {
+                  return (
+                    <div className="p-3.5 rounded-2xl bg-gradient-to-r from-[#edf7f0] to-[#e4f3e9] dark:from-[#1a2d22] dark:to-[#17251d] border border-[#cfe1d5] dark:border-[#2b4434] shadow-xs space-y-2.5">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <span className="relative flex h-2 w-2">
+                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                            <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                          </span>
+                          <span className="text-xs font-bold text-[#176541] dark:text-[#34d399]">
+                            {bio.type === 'fingerprint'
+                              ? 'TouchID / Fingerprint Ready'
+                              : bio.type === 'both'
+                                ? 'Biometric Passkey Active'
+                                : 'FaceID Ready'}
+                          </span>
+                        </div>
+                        <span className="text-[10px] text-[#176541] dark:text-[#34d399] font-semibold bg-white/80 dark:bg-black/30 px-2 py-0.5 rounded-md border border-[#cfe1d5] dark:border-[#2b4434]">
+                          Instant Unlock
+                        </span>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => handleBiometricLoginTrigger(targetPhone)}
+                        className="w-full py-2.5 px-4 rounded-xl bg-[#176541] hover:bg-[#124d32] text-white font-bold text-xs shadow-[0_4px_14px_rgba(23,101,65,0.25)] transition-all cursor-pointer flex items-center justify-center gap-2 group"
+                      >
+                        {bio.type === 'fingerprint' ? (
+                          <Fingerprint className="w-4 h-4 text-emerald-300 group-hover:scale-110 transition-transform" />
+                        ) : (
+                          <ScanFace className="w-4 h-4 text-emerald-300 group-hover:scale-110 transition-transform" />
+                        )}
+                        <span>
+                          Fast Sign In with {bio.type === 'fingerprint' ? 'TouchID / Fingerprint' : 'FaceID'}
+                        </span>
+                        <ArrowRight className="w-3.5 h-3.5 text-emerald-300 group-hover:translate-x-0.5 transition-transform" />
+                      </button>
+                    </div>
+                  );
+                }
+                return null;
+              })()}
+
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-[#481e0b] dark:text-[#f7eee9] mb-1.5">
+                  Mobile Number or Email
+                </label>
+                <div className="relative">
+                  <input
+                    type="text"
+                    required
+                    value={loginIdentifier}
+                    onChange={(e) => setLoginIdentifier(e.target.value)}
+                    placeholder="e.g. 9876543210 or rahul.sharma@example.com"
+                    className="w-full pl-9 pr-3.5 py-2.5 rounded-xl border border-[#d9c9c2] dark:border-[#42332a] bg-white dark:bg-[#251d19] text-sm text-[#481e0b] dark:text-[#f7eee9] focus:outline-none focus:ring-2 focus:ring-[#c85d38]/30 focus:border-[#c85d38]"
+                  />
+                  <User className="w-4 h-4 text-[#786b65] dark:text-[#a89991] absolute left-3 top-3" />
+                </div>
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="block text-xs font-bold uppercase tracking-wider text-[#481e0b] dark:text-[#f7eee9]">
+                    Security Passcode / PIN
+                  </label>
+                  <span className="text-[11px] text-[#786b65] dark:text-[#a89991]">
+                    Default PIN: <strong className="text-[#a84724] dark:text-[#f38360]">1234</strong>
+                  </span>
+                </div>
+                <div className="relative">
+                  <input
+                    type={showPin ? 'text' : 'password'}
+                    required
+                    value={loginPin}
+                    onChange={(e) => setLoginPin(e.target.value)}
+                    placeholder="Enter 4-digit PIN (e.g. 1234)"
+                    className="w-full pl-9 pr-10 py-2.5 rounded-xl border border-[#d9c9c2] dark:border-[#42332a] bg-white dark:bg-[#251d19] text-sm text-[#481e0b] dark:text-[#f7eee9] focus:outline-none focus:ring-2 focus:ring-[#c85d38]/30 focus:border-[#c85d38]"
+                  />
+                  <Lock className="w-4 h-4 text-[#786b65] dark:text-[#a89991] absolute left-3 top-3" />
+                  <button
+                    type="button"
+                    onClick={() => setShowPin(!showPin)}
+                    className="absolute right-3 top-3 text-[#786b65] dark:text-[#a89991] hover:text-[#481e0b]"
+                  >
+                    {showPin ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                className="w-full py-3 px-6 rounded-full bg-[#c85d38] hover:bg-[#a84724] text-white font-bold text-sm shadow-[0_8px_18px_rgba(168,71,36,0.25)] transition-all cursor-pointer flex items-center justify-center gap-2"
+              >
+                <LogIn className="w-4 h-4" />
+                <span>Sign In to Patient Portal</span>
+              </button>
+
+              <div className="flex items-center justify-between text-xs pt-2">
+                <button
+                  type="button"
+                  onClick={handleOpenOtpModal}
+                  className="text-[#176541] dark:text-[#34d399] font-semibold hover:underline flex items-center gap-1 cursor-pointer"
+                >
+                  <KeyRound className="w-3.5 h-3.5" />
+                  <span>Forgot PIN? / Login via SMS OTP</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setAuthTab('register')}
+                  className="text-[#a84724] dark:text-[#f38360] font-semibold hover:underline cursor-pointer"
+                >
+                  New Patient? Register
+                </button>
+              </div>
+            </form>
+          )}
+
+          {/* TAB 2: NEW PATIENT REGISTRATION */}
+          {authTab === 'register' && (
+            <form onSubmit={handleRegister} className="space-y-3.5 animate-in fade-in duration-150">
+              <div>
+                <label className="block text-[11px] font-bold uppercase tracking-wider text-[#481e0b] dark:text-[#f7eee9] mb-1">
+                  Full Name *
+                </label>
                 <input
-                  type="tel"
+                  type="text"
                   required
-                  maxLength={15}
-                  value={phoneNumber}
-                  onChange={(e) => setPhoneNumber(e.target.value)}
-                  placeholder="e.g. 9876543210"
-                  className="w-full pl-9 pr-3.5 py-2.5 rounded-lg border border-[#d9c9c2] dark:border-[#42332a] bg-white dark:bg-[#251d19] text-sm text-[#481e0b] dark:text-[#f7eee9] focus:outline-none focus:ring-2 focus:ring-[#c85d38]/30 focus:border-[#c85d38]"
+                  value={regName}
+                  onChange={(e) => setRegName(e.target.value)}
+                  placeholder="e.g. Anjali Gupta"
+                  className="w-full px-3.5 py-2 rounded-xl border border-[#d9c9c2] dark:border-[#42332a] bg-white dark:bg-[#251d19] text-xs text-[#481e0b] dark:text-[#f7eee9] focus:outline-none focus:ring-2 focus:ring-[#c85d38]/30"
                 />
-                <Phone className="w-4 h-4 text-[#786b65] dark:text-[#a89991] absolute left-3 top-3" />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[11px] font-bold uppercase tracking-wider text-[#481e0b] dark:text-[#f7eee9] mb-1">
+                    10-Digit Mobile Phone *
+                  </label>
+                  <input
+                    type="tel"
+                    required
+                    maxLength={10}
+                    value={regPhone}
+                    onChange={(e) => setRegPhone(e.target.value)}
+                    placeholder="98XXXXXXXX"
+                    className="w-full px-3.5 py-2 rounded-xl border border-[#d9c9c2] dark:border-[#42332a] bg-white dark:bg-[#251d19] text-xs text-[#481e0b] dark:text-[#f7eee9] focus:outline-none focus:ring-2 focus:ring-[#c85d38]/30"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-bold uppercase tracking-wider text-[#481e0b] dark:text-[#f7eee9] mb-1">
+                    Email Address
+                  </label>
+                  <input
+                    type="email"
+                    value={regEmail}
+                    onChange={(e) => setRegEmail(e.target.value)}
+                    placeholder="anjali@example.com"
+                    className="w-full px-3.5 py-2 rounded-xl border border-[#d9c9c2] dark:border-[#42332a] bg-white dark:bg-[#251d19] text-xs text-[#481e0b] dark:text-[#f7eee9] focus:outline-none focus:ring-2 focus:ring-[#c85d38]/30"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-3 gap-2">
+                <div>
+                  <label className="block text-[10px] font-bold uppercase tracking-wider text-[#481e0b] dark:text-[#f7eee9] mb-1">
+                    Date of Birth
+                  </label>
+                  <input
+                    type="date"
+                    value={regDob}
+                    onChange={(e) => setRegDob(e.target.value)}
+                    className="w-full px-2 py-2 rounded-lg border border-[#d9c9c2] dark:border-[#42332a] bg-white dark:bg-[#251d19] text-xs"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-bold uppercase tracking-wider text-[#481e0b] dark:text-[#f7eee9] mb-1">
+                    Gender
+                  </label>
+                  <select
+                    value={regGender}
+                    onChange={(e) => setRegGender(e.target.value)}
+                    className="w-full px-2 py-2 rounded-lg border border-[#d9c9c2] dark:border-[#42332a] bg-white dark:bg-[#251d19] text-xs"
+                  >
+                    <option value="Male">Male</option>
+                    <option value="Female">Female</option>
+                    <option value="Other">Other</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-bold uppercase tracking-wider text-[#481e0b] dark:text-[#f7eee9] mb-1">
+                    Blood Group
+                  </label>
+                  <select
+                    value={regBloodGroup}
+                    onChange={(e) => setRegBloodGroup(e.target.value)}
+                    className="w-full px-2 py-2 rounded-lg border border-[#d9c9c2] dark:border-[#42332a] bg-white dark:bg-[#251d19] text-xs"
+                  >
+                    <option value="A+">A+</option>
+                    <option value="B+">B+</option>
+                    <option value="O+">O+</option>
+                    <option value="AB+">AB+</option>
+                    <option value="A-">A-</option>
+                    <option value="B-">B-</option>
+                    <option value="O-">O-</option>
+                    <option value="AB-">AB-</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold uppercase tracking-wider text-[#481e0b] dark:text-[#f7eee9] mb-1">
+                  Create 4-Digit Security Passcode/PIN *
+                </label>
+                <input
+                  type="password"
+                  required
+                  maxLength={6}
+                  value={regPin}
+                  onChange={(e) => setRegPin(e.target.value)}
+                  placeholder="e.g. 1234"
+                  className="w-full px-3.5 py-2 rounded-xl border border-[#d9c9c2] dark:border-[#42332a] bg-white dark:bg-[#251d19] text-xs text-[#481e0b] dark:text-[#f7eee9] focus:outline-none focus:ring-2 focus:ring-[#c85d38]/30"
+                />
+              </div>
+
+              <button
+                type="submit"
+                className="w-full py-3 px-6 rounded-full bg-[#176541] hover:bg-[#124d32] text-white font-bold text-sm shadow-[0_8px_18px_rgba(23,101,65,0.25)] transition-all cursor-pointer flex items-center justify-center gap-2 mt-2"
+              >
+                <UserPlus className="w-4 h-4" />
+                <span>Create Patient Account & View Portal</span>
+              </button>
+            </form>
+          )}
+
+          {/* TAB 3: 1-CLICK DEMO PROFILES */}
+          {authTab === 'demo' && (
+            <div className="space-y-3 animate-in fade-in duration-150">
+              <span className="text-[11px] font-bold text-[#786b65] dark:text-[#a89991] uppercase tracking-wider block">
+                Instant One-Click Verified Records:
+              </span>
+
+              <div className="space-y-2">
+                <div className="w-full p-3 rounded-2xl border border-[#dcc9bf] dark:border-[#42332a] bg-[#fdfaf8] dark:bg-[#251d19] hover:border-[#c85d38] text-left transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3 group">
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-[#c85d38] to-[#a84724] text-white font-bold text-xs flex items-center justify-center shrink-0">
+                      RS
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-bold text-xs text-[#481e0b] dark:text-[#f7eee9]">
+                          Rahul Sharma (35, Male · B+)
+                        </span>
+                        <span className="px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800 flex items-center gap-1">
+                          <ScanFace className="w-2.5 h-2.5" /> FaceID Active
+                        </span>
+                      </div>
+                      <div className="text-[11px] text-[#786b65] dark:text-[#a89991]">
+                        Upcoming Visit with Dr. Misbah Ambar · Rhinitis & Homeopathy Rx
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1.5 shrink-0 self-end sm:self-center">
+                    <button
+                      type="button"
+                      onClick={() => handleBiometricLoginTrigger('9876543210')}
+                      className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-[#edf7f0] text-[#176541] hover:bg-[#176541] hover:text-white transition-colors flex items-center gap-1 cursor-pointer"
+                      title="1-Tap Sign-in with simulated FaceID"
+                    >
+                      <ScanFace className="w-3 h-3" />
+                      <span>FaceID</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleQuickSelect('9876543210', '1234')}
+                      className="px-2.5 py-1 rounded-full text-[10px] font-bold border border-[#dcc9bf] dark:border-[#42332a] text-[#56473f] dark:text-[#e8dcd5] hover:bg-[#c85d38] hover:text-white hover:border-[#c85d38] transition-colors cursor-pointer"
+                    >
+                      PIN (1234)
+                    </button>
+                  </div>
+                </div>
+
+                <div className="w-full p-3 rounded-2xl border border-[#dcc9bf] dark:border-[#42332a] bg-[#fdfaf8] dark:bg-[#251d19] hover:border-[#c85d38] text-left transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3 group">
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-[#176541] to-[#124d32] text-white font-bold text-xs flex items-center justify-center shrink-0">
+                      PV
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-bold text-xs text-[#481e0b] dark:text-[#f7eee9]">
+                          Pooja Verma (31, Female · O+)
+                        </span>
+                        <span className="px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-[#f3ede8] dark:bg-[#2d221c] text-[#786b65] dark:text-[#a89991]">
+                          Biometrics Disabled
+                        </span>
+                      </div>
+                      <div className="text-[11px] text-[#786b65] dark:text-[#a89991]">
+                        Hypertension Monitoring, Lab Trends & CoQ10 Prescription
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1.5 shrink-0 self-end sm:self-center">
+                    <button
+                      type="button"
+                      onClick={() => handleQuickSelect('9123456780', '1234')}
+                      className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-[#edf7f0] text-[#176541] hover:bg-[#176541] hover:text-white transition-colors cursor-pointer"
+                    >
+                      Login (1234)
+                    </button>
+                  </div>
+                </div>
+
+                <div className="w-full p-3 rounded-2xl border border-[#dcc9bf] dark:border-[#42332a] bg-[#fdfaf8] dark:bg-[#251d19] hover:border-[#c85d38] text-left transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3 group">
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-[#234c91] to-[#17253b] text-white font-bold text-xs flex items-center justify-center shrink-0">
+                      AS
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-bold text-xs text-[#481e0b] dark:text-[#f7eee9]">
+                          Amit Sen (43, Male · A+)
+                        </span>
+                        <span className="px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-[#f3ede8] dark:bg-[#2d221c] text-[#786b65] dark:text-[#a89991]">
+                          Biometrics Disabled
+                        </span>
+                      </div>
+                      <div className="text-[11px] text-[#786b65] dark:text-[#a89991]">
+                        Routine Health Baseline & Orthopedic Consultation Records
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1.5 shrink-0 self-end sm:self-center">
+                    <button
+                      type="button"
+                      onClick={() => handleQuickSelect('9811223344', '1234')}
+                      className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-[#edf7f0] text-[#176541] hover:bg-[#176541] hover:text-white transition-colors cursor-pointer"
+                    >
+                      Login (1234)
+                    </button>
+                  </div>
+                </div>
               </div>
             </div>
-
-            <button
-              type="submit"
-              className="w-full py-3 px-6 rounded-full bg-[#c85d38] hover:bg-[#a84724] text-white font-bold text-sm shadow-[0_8px_18px_rgba(168,71,36,0.25)] transition-all cursor-pointer flex items-center justify-center gap-2"
-            >
-              <Search className="w-4 h-4" />
-              <span>Access Records</span>
-            </button>
-          </form>
-
-          {/* Quick Demo Patients */}
-          <div className="pt-4 border-t border-[#f0e8e3] dark:border-[#33251e] space-y-2">
-            <span className="text-[11px] font-bold text-[#786b65] dark:text-[#a89991] uppercase tracking-wider block">
-              Quick One-Click Demo Records:
-            </span>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-              <button
-                type="button"
-                onClick={() => handleQuickSelect('9876543210')}
-                className="p-2.5 rounded-xl border border-[#dcc9bf] dark:border-[#42332a] bg-[#fdfaf8] dark:bg-[#251d19] hover:border-[#c85d38] text-left transition-all cursor-pointer"
-              >
-                <div className="font-bold text-xs text-[#481e0b] dark:text-[#f7eee9]">
-                  Rahul Sharma
-                </div>
-                <div className="text-[10px] text-[#786b65] dark:text-[#a89991]">
-                  Upcoming Visit, Rhinitis & Homeopathy Rx
-                </div>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => handleQuickSelect('9123456780')}
-                className="p-2.5 rounded-xl border border-[#dcc9bf] dark:border-[#42332a] bg-[#fdfaf8] dark:bg-[#251d19] hover:border-[#c85d38] text-left transition-all cursor-pointer"
-              >
-                <div className="font-bold text-xs text-[#481e0b] dark:text-[#f7eee9]">
-                  Pooja Verma
-                </div>
-                <div className="text-[10px] text-[#786b65] dark:text-[#a89991]">
-                  Upcoming Visit, Hypertension & Labs
-                </div>
-              </button>
-            </div>
-          </div>
+          )}
         </div>
       ) : (
         /* Authenticated Patient Portal View */
@@ -408,6 +974,49 @@ export const PatientPortalView: React.FC<PatientPortalViewProps> = ({ onNavigate
                   <span className="px-2 py-0.5 rounded-full bg-[#edf7f0] dark:bg-[#1a2d22] text-[#176541] dark:text-[#34d399] font-bold text-[10px]">
                     Verified Patient
                   </span>
+
+                  {/* Immediate Visual Indicator for Biometric Status */}
+                  {biometricStatus?.enabled ? (
+                    <button
+                      type="button"
+                      onClick={() => setShowBiometricSettings(true)}
+                      className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-300 dark:border-emerald-800 text-emerald-800 dark:text-emerald-300 font-bold text-[10px] shadow-2xs hover:bg-emerald-100 dark:hover:bg-emerald-900/60 transition-all cursor-pointer group"
+                      title="Biometric Protection is ACTIVE on this device. Click to configure FaceID/TouchID settings."
+                    >
+                      <span className="relative flex h-2 w-2">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                        <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                      </span>
+                      {biometricStatus.type === 'fingerprint' ? (
+                        <Fingerprint className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                      ) : (
+                        <ScanFace className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                      )}
+                      <span>
+                        {biometricStatus.type === 'fingerprint'
+                          ? 'TouchID Active'
+                          : biometricStatus.type === 'both'
+                            ? 'FaceID + TouchID Active'
+                            : 'FaceID Active'}
+                      </span>
+                      <span className="text-[9px] text-emerald-700/70 dark:text-emerald-400/70 font-normal group-hover:underline">
+                        · Settings
+                      </span>
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setShowBiometricSettings(true)}
+                      className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-[#fdf2ec] dark:bg-[#281c16] border border-[#f2d0c2] dark:border-[#4d291a] text-[#a84724] dark:text-[#f38360] font-bold text-[10px] hover:bg-[#fae6dc] dark:hover:bg-[#34211a] transition-all cursor-pointer group"
+                      title="Biometric Authentication is currently disabled. Click to enable FaceID or TouchID."
+                    >
+                      <ShieldCheck className="w-3.5 h-3.5 text-[#c85d38]" />
+                      <span>Biometrics Disabled</span>
+                      <span className="px-1.5 py-0.2 rounded-full bg-[#c85d38] text-white font-bold text-[9px] uppercase tracking-wider group-hover:scale-105 transition-transform">
+                        Enable
+                      </span>
+                    </button>
+                  )}
                 </div>
 
                 <div className="text-xs text-[#786b65] dark:text-[#a89991] flex flex-wrap items-center gap-x-3 gap-y-1 mt-1">
@@ -443,7 +1052,37 @@ export const PatientPortalView: React.FC<PatientPortalViewProps> = ({ onNavigate
               </div>
             </div>
 
-            <div className="flex items-center gap-2 self-end md:self-center shrink-0">
+            <div className="flex items-center gap-2 self-end md:self-center shrink-0 flex-wrap justify-end">
+              <button
+                onClick={handleDownloadHealthSummary}
+                disabled={isDownloadingSummary}
+                className="px-4 py-2 rounded-full bg-[#176541] hover:bg-[#124d32] text-white text-xs font-bold shadow-[0_4px_14px_rgba(23,101,65,0.28)] transition-all cursor-pointer flex items-center gap-1.5 shrink-0 disabled:opacity-75"
+                title="Download Comprehensive Health Summary PDF (History, Labs & Prescriptions)"
+              >
+                {isDownloadingSummary ? (
+                  <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                ) : (
+                  <Download className="w-3.5 h-3.5" />
+                )}
+                <span>{isDownloadingSummary ? 'Generating PDF...' : 'Download Health Summary'}</span>
+              </button>
+
+              <button
+                onClick={() => onNavigate('Diagnostics')}
+                className="px-3.5 py-2 rounded-full border border-[#cfe1d5] dark:border-[#2b4434] bg-[#edf7f0] dark:bg-[#1a2d22] hover:bg-[#dceee2] dark:hover:bg-[#233c2e] text-[#176541] dark:text-[#34d399] text-xs font-semibold shadow-xs transition-colors cursor-pointer flex items-center gap-1.5"
+              >
+                <FlaskConical className="w-3.5 h-3.5" />
+                <span>Book Lab Tests</span>
+              </button>
+
+              <button
+                onClick={() => onNavigate('Telehealth')}
+                className="px-3.5 py-2 rounded-full border border-sky-200 dark:border-sky-800 bg-sky-50 dark:bg-sky-950/40 hover:bg-sky-100 dark:hover:bg-sky-900 text-sky-700 dark:text-sky-300 text-xs font-semibold shadow-xs transition-colors cursor-pointer flex items-center gap-1.5"
+              >
+                <Video className="w-3.5 h-3.5" />
+                <span>Virtual Visit</span>
+              </button>
+
               <button
                 onClick={() => onNavigate('Appointments')}
                 className="px-4 py-2 rounded-full bg-[#c85d38] hover:bg-[#a84724] text-white text-xs font-semibold shadow-xs transition-colors cursor-pointer flex items-center gap-1.5"
@@ -453,17 +1092,48 @@ export const PatientPortalView: React.FC<PatientPortalViewProps> = ({ onNavigate
               </button>
 
               <button
-                onClick={handleLogout}
-                className="p-2 rounded-full border border-[#dcc9bf] dark:border-[#42332a] bg-white dark:bg-[#251d19] hover:bg-red-50 dark:hover:bg-red-950/40 hover:text-red-600 text-[#786b65] dark:text-[#a89991] transition-colors cursor-pointer"
-                title="Switch patient"
+                onClick={() => setShowBiometricSettings(true)}
+                className="px-3.5 py-2 rounded-full border border-[#dcc9bf] dark:border-[#42332a] bg-white dark:bg-[#251d19] hover:bg-[#fff5f0] dark:hover:bg-[#2e211b] hover:border-[#c85d38] text-[#56473f] dark:text-[#e8dcd5] text-xs font-semibold shadow-xs transition-colors cursor-pointer flex items-center gap-1.5"
+                title="Configure FaceID and Fingerprint biometric authentication"
               >
-                <LogOut className="w-4 h-4" />
+                {biometricStatus?.enabled ? (
+                  biometricStatus.type === 'fingerprint' ? (
+                    <Fingerprint className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                  ) : (
+                    <ScanFace className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                  )
+                ) : (
+                  <ShieldCheck className="w-3.5 h-3.5 text-[#c85d38]" />
+                )}
+                <span>Biometric Settings</span>
+              </button>
+
+              <button
+                onClick={handleLogout}
+                className="px-3.5 py-2 rounded-full border border-[#dcc9bf] dark:border-[#42332a] bg-white dark:bg-[#251d19] hover:bg-red-50 dark:hover:bg-red-950/40 hover:text-red-600 text-[#786b65] dark:text-[#a89991] text-xs font-semibold transition-colors cursor-pointer flex items-center gap-1.5"
+                title="Sign out of patient portal"
+              >
+                <LogOut className="w-3.5 h-3.5" />
+                <span>Sign Out</span>
               </button>
             </div>
           </div>
 
           {/* Sub-navigation Tabs */}
           <div className="flex items-center gap-2 border-b border-[#d5e5db] dark:border-[#382b24] pb-2 overflow-x-auto scrollbar-none">
+            <button
+              onClick={() => setActiveSection('overview')}
+              className={`px-4 py-2 rounded-full text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
+                activeSection === 'overview'
+                  ? 'bg-[#176541] text-white shadow-xs'
+                  : 'bg-white dark:bg-[#1e1714] text-[#56473f] dark:text-[#e8dcd5] border border-[#dcc9bf] dark:border-[#3d2e26] hover:border-[#176541]'
+              }`}
+            >
+              <Sparkles className="w-3.5 h-3.5 text-emerald-300" />
+              <span>Health Overview (AI)</span>
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+            </button>
+
             <button
               onClick={() => setActiveSection('upcoming')}
               className={`px-4 py-2 rounded-full text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
@@ -510,6 +1180,21 @@ export const PatientPortalView: React.FC<PatientPortalViewProps> = ({ onNavigate
             </button>
 
             <button
+              onClick={() => setActiveSection('trends')}
+              className={`px-4 py-2 rounded-full text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
+                activeSection === 'trends'
+                  ? 'bg-[#c85d38] text-white shadow-xs'
+                  : 'bg-white dark:bg-[#1e1714] text-[#56473f] dark:text-[#e8dcd5] border border-[#dcc9bf] dark:border-[#3d2e26] hover:border-[#c85d38]'
+              }`}
+            >
+              <TrendingUp className="w-3.5 h-3.5 text-emerald-500" />
+              <span>Health & Lab Trends</span>
+              <span className="w-4 h-4 rounded-full bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 text-center text-[10px] leading-4 font-bold">
+                {activeProfile.healthTrends?.length || 0}
+              </span>
+            </button>
+
+            <button
               onClick={() => setActiveSection('prescriptions')}
               className={`px-4 py-2 rounded-full text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
                 activeSection === 'prescriptions'
@@ -537,9 +1222,66 @@ export const PatientPortalView: React.FC<PatientPortalViewProps> = ({ onNavigate
             </button>
           </div>
 
+          {/* Section: AI PERSONAL HEALTH ASSISTANT HEALTH OVERVIEW WIDGET */}
+          {activeSection === 'overview' && (
+            <div className="space-y-6 animate-in fade-in duration-200">
+              <HealthOverviewWidget
+                profile={activeProfile}
+                onNavigate={onNavigate}
+                onAskAI={() => onNavigate('Assistant')}
+              />
+            </div>
+          )}
+
           {/* Section 0: UPCOMING APPOINTMENTS & LIVE COUNTDOWN TIMER */}
           {activeSection === 'upcoming' && (
             <div className="space-y-6">
+              {/* Comprehensive Health Summary Download Card */}
+              <div className="p-5 md:p-6 rounded-3xl bg-gradient-to-br from-[#fcf7f4] via-[#f7eee9] to-[#eeddd4] dark:from-[#241a16] dark:via-[#1e1512] dark:to-[#17100d] border border-[#e5d3c8] dark:border-[#3d2e26] shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-5 transition-colors">
+                <div className="flex items-start gap-4">
+                  <div className="w-12 h-12 rounded-2xl bg-[#176541] text-white flex items-center justify-center shrink-0 shadow-md">
+                    <FileText className="w-6 h-6" />
+                  </div>
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h4 className="font-heading font-bold text-base md:text-lg text-[#481e0b] dark:text-[#f7eee9]">
+                        Comprehensive Patient Health Summary (PDF)
+                      </h4>
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#edf7f0] dark:bg-[#1a2d22] text-[#176541] dark:text-[#34d399] border border-[#cfe1d5] dark:border-[#2b4434]">
+                        Official EHR Export
+                      </span>
+                    </div>
+                    <p className="text-xs text-[#685a53] dark:text-[#c4b5ae] max-w-xl leading-relaxed">
+                      Download a printable, verified PDF summary report consolidating your medical history ({activeProfile.medicalHistory.length} visits), recent diagnostic lab results ({activeProfile.labResults.length} tests), and active medication prescriptions ({activeProfile.prescriptions.length} items).
+                    </p>
+                    <div className="flex items-center gap-4 text-[11px] text-[#786b65] dark:text-[#a89991] pt-0.5 flex-wrap">
+                      <span className="flex items-center gap-1 font-medium">
+                        <Check className="w-3.5 h-3.5 text-[#176541]" /> Complete Consultation Notes
+                      </span>
+                      <span className="flex items-center gap-1 font-medium">
+                        <Check className="w-3.5 h-3.5 text-[#176541]" /> Clinical Lab Values & Ranges
+                      </span>
+                      <span className="flex items-center gap-1 font-medium">
+                        <Check className="w-3.5 h-3.5 text-[#176541]" /> Active Rx Schedules & Dosage
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleDownloadHealthSummary}
+                  disabled={isDownloadingSummary}
+                  className="px-5 py-3 rounded-full bg-[#176541] hover:bg-[#124d32] text-white text-xs font-bold shadow-[0_6px_18px_rgba(23,101,65,0.28)] transition-all cursor-pointer flex items-center gap-2 shrink-0 self-stretch md:self-center justify-center disabled:opacity-75"
+                >
+                  {isDownloadingSummary ? (
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  ) : (
+                    <Download className="w-4 h-4" />
+                  )}
+                  <span>{isDownloadingSummary ? 'Generating PDF Report...' : 'Download Health Summary (PDF)'}</span>
+                </button>
+              </div>
               <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
                 <div>
                   <h3 className="font-heading font-bold text-lg text-[#481e0b] dark:text-[#f7eee9]">
@@ -550,7 +1292,17 @@ export const PatientPortalView: React.FC<PatientPortalViewProps> = ({ onNavigate
                   </p>
                 </div>
 
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
+                  {upcomingBookings.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setSelectedQrBooking(upcomingBookings[0])}
+                      className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full border border-[#176541] bg-[#edf7f0] dark:bg-[#1a2d22] hover:bg-[#dceee2] dark:hover:bg-[#233c2e] text-[#176541] dark:text-[#34d399] text-xs font-bold shadow-2xs transition-all cursor-pointer"
+                    >
+                      <QrCode className="w-3.5 h-3.5" />
+                      <span>Check-In QR Pass</span>
+                    </button>
+                  )}
                   <button
                     onClick={handleCreateTestAppointment}
                     className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-[#dcc9bf] dark:border-[#42332a] bg-white dark:bg-[#251d19] hover:bg-[#edf7f0] text-xs font-semibold text-[#56473f] dark:text-[#e8dcd5] transition-colors cursor-pointer"
@@ -604,10 +1356,17 @@ export const PatientPortalView: React.FC<PatientPortalViewProps> = ({ onNavigate
                         {/* Top Status Header */}
                         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pb-4 border-b border-[#f0e8e3] dark:border-[#33251e]">
                           <div>
-                            <div className="flex items-center gap-2">
-                              <span className="px-2.5 py-0.5 rounded-full bg-[#e0f3e8] dark:bg-[#1a2d22] text-[#16633b] dark:text-[#34d399] font-bold text-[10px]">
-                                Confirmed Consultation
-                              </span>
+                            <div className="flex items-center gap-2 flex-wrap">
+                              {checkedInBookingIds.has(b.booking_id) ? (
+                                <span className="px-2.5 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950/80 text-emerald-800 dark:text-emerald-300 font-bold text-[10px] flex items-center gap-1 border border-emerald-300 dark:border-emerald-800">
+                                  <CheckCircle2 className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
+                                  Checked In · Kiosk Confirmed
+                                </span>
+                              ) : (
+                                <span className="px-2.5 py-0.5 rounded-full bg-[#e0f3e8] dark:bg-[#1a2d22] text-[#16633b] dark:text-[#34d399] font-bold text-[10px]">
+                                  Confirmed Consultation
+                                </span>
+                              )}
                               <span className="text-xs text-[#786b65] dark:text-[#a89991]">
                                 Ref: <code>{b.booking_id}</code>
                               </span>
@@ -620,8 +1379,18 @@ export const PatientPortalView: React.FC<PatientPortalViewProps> = ({ onNavigate
                             </div>
                           </div>
 
-                          {/* Remind Me Button */}
-                          <div className="flex items-center gap-2">
+                          {/* Action Buttons: Check-In QR Pass & Remind Me */}
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <button
+                              type="button"
+                              onClick={() => setSelectedQrBooking(b)}
+                              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-bold bg-[#176541] hover:bg-[#124d32] text-white shadow-[0_4px_14px_rgba(23,101,65,0.25)] transition-all cursor-pointer"
+                              title="Generate and view fast-track Check-In QR Code for clinic arrival"
+                            >
+                              <QrCode className="w-3.5 h-3.5" />
+                              <span>{checkedInBookingIds.has(b.booking_id) ? 'View QR Pass' : 'Check-In QR Pass'}</span>
+                            </button>
+
                             <button
                               onClick={() => handleRemindMe(b)}
                               className={`inline-flex items-center gap-2 px-4 py-2 rounded-full text-xs font-bold transition-all shadow-xs cursor-pointer ${
@@ -639,7 +1408,7 @@ export const PatientPortalView: React.FC<PatientPortalViewProps> = ({ onNavigate
                               ) : (
                                 <>
                                   <Bell className="w-3.5 h-3.5" />
-                                  <span>Remind Me (Desktop Alert)</span>
+                                  <span>Remind Me</span>
                                 </>
                               )}
                             </button>
@@ -713,6 +1482,21 @@ export const PatientPortalView: React.FC<PatientPortalViewProps> = ({ onNavigate
                           </div>
                         </div>
 
+                        {/* INLINE CONTACTLESS ARRIVAL QR CARD */}
+                        <AppointmentQRCard
+                          booking={b}
+                          isCheckedIn={checkedInBookingIds.has(b.booking_id)}
+                          onCheckIn={(bookingId) => {
+                            setCheckedInBookingIds((prev) => new Set([...prev, bookingId]));
+                            setNotificationStatus({
+                              type: 'success',
+                              message: `Fast-track arrival verified! You are officially checked in for appointment ${bookingId}.`,
+                            });
+                            setTimeout(() => setNotificationStatus(null), 5000);
+                          }}
+                          onOpenModal={(booking) => setSelectedQrBooking(booking)}
+                        />
+
                         {/* Visit Details Footer */}
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs pt-2">
                           <div className="p-3 rounded-xl bg-[#fdfaf8] dark:bg-[#251d19] border border-[#f0e8e3] dark:border-[#33251e]">
@@ -740,6 +1524,31 @@ export const PatientPortalView: React.FC<PatientPortalViewProps> = ({ onNavigate
                             </span>
                           </div>
                         </div>
+
+                        {/* Arrival Fast-Track QR Callout */}
+                        <div className="p-3.5 rounded-2xl bg-gradient-to-r from-[#edf7f0] to-[#f4fbf6] dark:from-[#1a2d22] dark:to-[#16231b] border border-[#cfe1d5] dark:border-[#2b4434] flex items-center justify-between gap-3 flex-wrap">
+                          <div className="flex items-center gap-2.5 text-xs text-[#2a5038] dark:text-[#a3d6b3]">
+                            <div className="w-8 h-8 rounded-xl bg-[#176541] text-white flex items-center justify-center shrink-0 shadow-2xs">
+                              <QrCode className="w-4 h-4" />
+                            </div>
+                            <div>
+                              <div className="font-bold text-[#176541] dark:text-[#34d399]">
+                                Fast-Track Reception Check-In
+                              </div>
+                              <p className="text-[11px] text-[#557864] dark:text-[#9fc7ad]">
+                                Scan this appointment's QR code at the clinic kiosk to skip the reception line.
+                              </p>
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setSelectedQrBooking(b)}
+                            className="px-3.5 py-1.5 rounded-full bg-[#176541] hover:bg-[#124d32] text-white text-xs font-bold shadow-2xs transition-colors cursor-pointer flex items-center gap-1.5"
+                          >
+                            <span>Open QR Pass</span>
+                            <ArrowRight className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
                       </div>
                     );
                   })}
@@ -751,13 +1560,26 @@ export const PatientPortalView: React.FC<PatientPortalViewProps> = ({ onNavigate
           {/* Section 1: Medical History */}
           {activeSection === 'history' && (
             <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <h3 className="font-heading font-bold text-lg text-[#481e0b] dark:text-[#f7eee9]">
-                  Clinical Consultations & Visit Timeline
-                </h3>
-                <span className="text-xs text-[#786b65] dark:text-[#a89991]">
-                  {activeProfile.medicalHistory.length} visit record(s) on file
-                </span>
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                <div>
+                  <h3 className="font-heading font-bold text-lg text-[#481e0b] dark:text-[#f7eee9]">
+                    Clinical Consultations & Visit Timeline
+                  </h3>
+                  <span className="text-xs text-[#786b65] dark:text-[#a89991]">
+                    {activeProfile.medicalHistory.length} visit record(s) on file
+                  </span>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleDownloadHealthSummary}
+                  disabled={isDownloadingSummary}
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full bg-[#176541] hover:bg-[#124d32] text-white text-xs font-bold shadow-xs transition-colors cursor-pointer disabled:opacity-75"
+                  title="Download complete medical history and summary report"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>Download Health Summary (PDF)</span>
+                </button>
               </div>
 
               <div className="space-y-4">
@@ -888,8 +1710,27 @@ export const PatientPortalView: React.FC<PatientPortalViewProps> = ({ onNavigate
                   </p>
                 </div>
 
-                {/* Filter Pills */}
+                {/* Filter Pills & Download CTA */}
                 <div className="flex items-center gap-1.5 flex-wrap">
+                  <button
+                    type="button"
+                    onClick={handleDownloadHealthSummary}
+                    disabled={isDownloadingSummary}
+                    className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-[#176541] hover:bg-[#124d32] text-white shadow-xs transition-colors cursor-pointer mr-1 disabled:opacity-75"
+                    title="Download complete consolidated Health Summary report"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    <span>Summary PDF</span>
+                  </button>
+
+                  <button
+                    onClick={() => setActiveSection('trends')}
+                    className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-[#edf7f0] dark:bg-[#1a2d22] text-[#176541] dark:text-[#34d399] border border-[#cfe1d5] dark:border-[#2b4434] hover:bg-[#dceee2] dark:hover:bg-[#233c2e] transition-colors cursor-pointer mr-1"
+                  >
+                    <TrendingUp className="w-3.5 h-3.5" />
+                    <span>View Trends Chart</span>
+                  </button>
+
                   {['All', 'Hematology', 'Biochemistry', 'Radiology'].map((cat) => (
                     <button
                       key={cat}
@@ -985,8 +1826,10 @@ export const PatientPortalView: React.FC<PatientPortalViewProps> = ({ onNavigate
                           </p>
 
                           <button
-                            onClick={() => handleDownload(`${lr.testName}-${lr.id}.pdf`)}
+                            type="button"
+                            onClick={() => handleDownloadLabPDF(lr)}
                             className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-[#dcc9bf] dark:border-[#42332a] bg-white dark:bg-[#251d19] hover:bg-[#edf7f0] hover:border-[#176541] hover:text-[#176541] text-xs font-semibold text-[#56473f] dark:text-[#e8dcd5] transition-colors cursor-pointer shrink-0"
+                            title={`Download official PDF report for ${lr.testName}`}
                           >
                             <Download className="w-3.5 h-3.5" />
                             <span>Download PDF</span>
@@ -998,116 +1841,45 @@ export const PatientPortalView: React.FC<PatientPortalViewProps> = ({ onNavigate
               </div>
             </div>
           )}
-
-          {/* Section 3: Prescriptions */}
-          {activeSection === 'prescriptions' && (
+ 
+          {/* Section: Historical Health & Lab Trends Chart */}
+          {activeSection === 'trends' && (
             <div className="space-y-4">
-              <div className="flex items-center justify-between">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
                 <div>
                   <h3 className="font-heading font-bold text-lg text-[#481e0b] dark:text-[#f7eee9]">
-                    Doctor Prescriptions & Medication Schedules
+                    Longitudinal Vitals & Lab Trends Visualizer
                   </h3>
                   <p className="text-xs text-[#786b65] dark:text-[#a89991]">
-                    Verified digital prescriptions issued by CityCare Clinic specialists.
+                    Interactive Recharts trend lines tracking blood pressure, cholesterol panels, glucose, and heart rate over time.
                   </p>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setActiveSection('labs')}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-[#dcc9bf] dark:border-[#42332a] bg-white dark:bg-[#251d19] hover:bg-[#edf7f0] text-xs font-semibold text-[#56473f] dark:text-[#e8dcd5] transition-colors cursor-pointer"
+                  >
+                    <FlaskConical className="w-3.5 h-3.5 text-[#176541] dark:text-[#34d399]" />
+                    <span>View Pathology Slips</span>
+                  </button>
                 </div>
               </div>
 
-              <div className="space-y-5">
-                {activeProfile.prescriptions.map((rx) => (
-                  <div
-                    key={rx.id}
-                    className="p-6 md:p-8 rounded-3xl bg-white dark:bg-[#1e1714] border border-[#d5e5db] dark:border-[#382b24] shadow-xs space-y-5 transition-colors"
-                  >
-                    {/* Prescription Slip Header */}
-                    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pb-4 border-b border-[#f0e8e3] dark:border-[#33251e]">
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <span
-                            className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
-                              rx.active
-                                ? 'bg-[#e0f3e8] dark:bg-[#1a2d22] text-[#16633b] dark:text-[#34d399]'
-                                : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300'
-                            }`}
-                          >
-                            {rx.active ? 'Active Treatment' : 'Completed Course'}
-                          </span>
-                          <span className="text-xs text-[#786b65] dark:text-[#a89991]">
-                            Rx Ref: <code>{rx.prescriptionNumber}</code>
-                          </span>
-                        </div>
-                        <h4 className="font-heading font-bold text-base text-[#481e0b] dark:text-[#f7eee9] mt-1">
-                          Prescription by {rx.doctorName} ({rx.doctorSpec})
-                        </h4>
-                      </div>
-
-                      <div className="flex items-center gap-2 shrink-0">
-                        <button
-                          onClick={() => handlePrint(rx.prescriptionNumber)}
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-[#dcc9bf] dark:border-[#42332a] bg-white dark:bg-[#251d19] hover:bg-[#f7f3f0] text-xs font-semibold text-[#56473f] dark:text-[#e8dcd5] transition-colors cursor-pointer"
-                        >
-                          <Printer className="w-3.5 h-3.5" />
-                          <span>Print Slip</span>
-                        </button>
-                        <button
-                          onClick={() => handleDownload(`${rx.prescriptionNumber}.pdf`)}
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#c85d38] hover:bg-[#a84724] text-white text-xs font-semibold shadow-xs transition-colors cursor-pointer"
-                        >
-                          <Download className="w-3.5 h-3.5" />
-                          <span>Save PDF</span>
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* Medications Table */}
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-left text-xs border-collapse">
-                        <thead>
-                          <tr className="border-b border-[#f0e8e3] dark:border-[#33251e] text-[10px] uppercase font-bold text-[#786b65] dark:text-[#a89991]">
-                            <th className="py-2 pr-3">Medicine / Formulation</th>
-                            <th className="py-2 px-3">Dosage</th>
-                            <th className="py-2 px-3">Frequency</th>
-                            <th className="py-2 px-3">Duration</th>
-                            <th className="py-2 pl-3">Instructions</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-[#f0e8e3] dark:divide-[#33251e]">
-                          {rx.medications.map((med, mIdx) => (
-                            <tr key={mIdx} className="hover:bg-[#fdfaf8] dark:hover:bg-[#251d19]">
-                              <td className="py-3 pr-3 font-bold text-[#481e0b] dark:text-[#f7eee9]">
-                                {med.name}
-                              </td>
-                              <td className="py-3 px-3 text-[#56473f] dark:text-[#c4b5ae]">
-                                {med.dosage}
-                              </td>
-                              <td className="py-3 px-3 font-semibold text-[#a84724] dark:text-[#f38360]">
-                                {med.frequency}
-                              </td>
-                              <td className="py-3 px-3 text-[#56473f] dark:text-[#c4b5ae]">
-                                {med.duration}
-                              </td>
-                              <td className="py-3 pl-3 text-[#786b65] dark:text-[#a89991] italic">
-                                {med.instructions}
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-
-                    {/* Doctor Advice Footer */}
-                    <div className="p-3.5 rounded-2xl bg-[#fdfaf8] dark:bg-[#251d19] border border-[#f0e8e3] dark:border-[#33251e] flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-                      <div className="text-xs text-[#56473f] dark:text-[#c4b5ae]">
-                        <strong>Doctor's Advice:</strong> {rx.doctorNotes}
-                      </div>
-                      <div className="text-xs font-semibold text-[#176541] dark:text-[#34d399] shrink-0">
-                        Authorized Refills: {rx.refillsRemaining}
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
+              <LabTrendsChart
+                initialData={activeProfile.healthTrends || []}
+                patientName={activeProfile.name}
+              />
             </div>
+          )}
+
+          {/* Section 3: Dedicated Active and Past Prescriptions Management */}
+          {activeSection === 'prescriptions' && (
+            <PrescriptionList
+              prescriptions={activeProfile.prescriptions}
+              patientProfile={activeProfile}
+              onNavigateAppointments={() => onNavigate('Appointments')}
+            />
           )}
 
           {/* Section 4: Feedback & Reviews */}
@@ -1134,6 +1906,144 @@ export const PatientPortalView: React.FC<PatientPortalViewProps> = ({ onNavigate
           </div>
         </div>
       )}
+
+      {/* OTP Verification Modal */}
+      {isOtpModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs animate-in fade-in duration-200">
+          <div className="bg-white dark:bg-[#1e1714] border border-[#d5e5db] dark:border-[#382b24] rounded-3xl max-w-md w-full p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-[#f0e8e3] dark:border-[#33251e]">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-[#edf7f0] dark:bg-[#1a2d22] text-[#176541] dark:text-[#34d399] flex items-center justify-center">
+                  <KeyRound className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="font-heading font-bold text-base text-[#481e0b] dark:text-[#f7eee9]">
+                    One-Time Passcode (OTP)
+                  </h3>
+                  <p className="text-xs text-[#786b65] dark:text-[#a89991]">
+                    Instant passwordless patient sign in
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setIsOtpModalOpen(false)}
+                className="text-[#786b65] hover:text-[#481e0b] p-1 rounded-full hover:bg-gray-100"
+              >
+                ✕
+              </button>
+            </div>
+
+            {otpNotice && (
+              <div className="p-3 rounded-xl bg-[#edf7f0] dark:bg-[#1a2d22] border border-[#cfe1d5] dark:border-[#2b4434] text-xs text-[#176541] dark:text-[#34d399]">
+                {otpNotice}
+              </div>
+            )}
+
+            <form onSubmit={handleVerifyOtp} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-[#481e0b] dark:text-[#f7eee9] mb-1">
+                  Registered Mobile Phone
+                </label>
+                <input
+                  type="tel"
+                  required
+                  value={otpPhone}
+                  onChange={(e) => setOtpPhone(e.target.value)}
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-[#d9c9c2] dark:border-[#42332a] bg-white dark:bg-[#251d19] text-xs text-[#481e0b] dark:text-[#f7eee9]"
+                />
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-xs font-bold uppercase tracking-wider text-[#481e0b] dark:text-[#f7eee9]">
+                    6-Digit Verification Code
+                  </label>
+                  <span className="text-[11px] text-[#176541] dark:text-[#34d399] font-bold">
+                    Demo Code: 482910
+                  </span>
+                </div>
+                <input
+                  type="text"
+                  required
+                  maxLength={6}
+                  value={otpCode}
+                  onChange={(e) => setOtpCode(e.target.value)}
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-[#d9c9c2] dark:border-[#42332a] bg-[#fdfaf8] dark:bg-[#251d19] text-center font-mono font-bold text-lg tracking-widest text-[#481e0b] dark:text-[#f7eee9] focus:outline-none focus:ring-2 focus:ring-[#176541]/30"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setIsOtpModalOpen(false)}
+                  className="px-4 py-2 rounded-full border border-[#dcc9bf] dark:border-[#42332a] text-xs font-semibold text-[#786b65]"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 rounded-full bg-[#176541] hover:bg-[#124d32] text-white text-xs font-bold shadow-md cursor-pointer"
+                >
+                  Verify & Sign In
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Biometric Settings Modal */}
+      {activeProfile && (
+        <BiometricSettingsModal
+          isOpen={showBiometricSettings}
+          phone={activeProfile.phone}
+          patientName={activeProfile.name}
+          onClose={() => setShowBiometricSettings(false)}
+          onUpdate={(updated) => {
+            setBiometricStatus(updated);
+            setNotificationStatus({
+              type: 'success',
+              message: updated.enabled
+                ? `Biometric authentication (${updated.type === 'faceId' ? 'FaceID' : updated.type === 'fingerprint' ? 'TouchID' : 'FaceID + TouchID'}) is now ACTIVE for ${activeProfile.name}!`
+                : `Biometric authentication has been disabled for ${activeProfile.name}.`,
+            });
+            setTimeout(() => setNotificationStatus(null), 4000);
+          }}
+        />
+      )}
+
+      {/* Biometric Scanning Simulation Modal (for Login or Testing) */}
+      <BiometricModal
+        isOpen={isBiometricScanning}
+        mode={biometricScanMode}
+        biometricType={
+          biometricScanMode === 'login'
+            ? getBiometricSettings(biometricScanTargetPhone).type
+            : biometricStatus?.type || 'faceId'
+        }
+        patientName={
+          biometricScanMode === 'login'
+            ? getOrCreatePatientProfile(biometricScanTargetPhone).name
+            : activeProfile?.name || 'Patient'
+        }
+        onSuccess={handleBiometricLoginSuccess}
+        onCancel={() => setIsBiometricScanning(false)}
+      />
+
+      {/* Check-In QR Pass Modal for Streamlined Clinic Arrival */}
+      <CheckInQRModal
+        isOpen={!!selectedQrBooking}
+        booking={selectedQrBooking}
+        onClose={() => setSelectedQrBooking(null)}
+        onCheckInSuccess={(bookingId) => {
+          setCheckedInBookingIds((prev) => new Set([...prev, bookingId]));
+          setNotificationStatus({
+            type: 'success',
+            message: `Fast-track arrival verified! You are officially checked in for appointment ${bookingId}. Please proceed to the clinic waiting lounge.`,
+          });
+          setTimeout(() => setNotificationStatus(null), 5000);
+        }}
+      />
     </div>
   );
 };

@@ -15,6 +15,9 @@ import { PatientPortalView } from './components/views/PatientPortalView';
 import { ContactView } from './components/views/ContactView';
 import { AssistantView } from './components/views/AssistantView';
 import { StaffView } from './components/views/StaffView';
+import { DoctorPortalView } from './components/views/DoctorPortalView';
+import { DiagnosticsView } from './components/views/DiagnosticsView';
+import { TelehealthView } from './components/views/TelehealthView';
 
 import { Activity, Sparkles } from 'lucide-react';
 
@@ -71,6 +74,7 @@ export default function App() {
           {currentTab === 'Home' && <HomeView onNavigate={handleNavigate} />}
           {currentTab === 'Our doctors' && <DoctorsView onNavigate={handleNavigate} />}
           {currentTab === 'Services' && <ServicesView onNavigate={handleNavigate} />}
+          {currentTab === 'Diagnostics' && <DiagnosticsView onNavigate={handleNavigate} />}
           {currentTab === 'Appointments' && (
             <AppointmentsView
               initialDoctorId={selectedDoctorId}
@@ -80,9 +84,12 @@ export default function App() {
           {currentTab === 'Patient portal' && (
             <PatientPortalView onNavigate={handleNavigate} />
           )}
+          {(currentTab === 'Doctor portal' || currentTab === 'Staff') && (
+            <DoctorPortalView onNavigate={handleNavigate} />
+          )}
+          {currentTab === 'Telehealth' && <TelehealthView onNavigate={handleNavigate} />}
           {currentTab === 'Contact' && <ContactView onNavigate={handleNavigate} />}
           {currentTab === 'Assistant' && <AssistantView onNavigate={handleNavigate} />}
-          {currentTab === 'Staff' && <StaffView onNavigate={handleNavigate} />}
         </main>
 
         {/* Footer */}

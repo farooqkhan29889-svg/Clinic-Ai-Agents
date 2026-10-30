@@ -8,6 +8,7 @@ import {
   getUpcomingDays,
   SlotTakenError,
 } from '../../utils/storage';
+import QRCode from 'qrcode';
 import {
   User,
   Phone,
@@ -17,6 +18,8 @@ import {
   Copy,
   Check,
   Sparkles,
+  QrCode,
+  Download,
 } from 'lucide-react';
 
 interface AppointmentsViewProps {
@@ -45,6 +48,33 @@ export const AppointmentsView: React.FC<AppointmentsViewProps> = ({
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [confirmedBooking, setConfirmedBooking] = useState<Booking | null>(null);
   const [copied, setCopied] = useState<boolean>(false);
+  const [qrCodeUrl, setQrCodeUrl] = useState<string>('');
+
+  useEffect(() => {
+    if (confirmedBooking) {
+      const payload = JSON.stringify({
+        app: 'CityCareClinic',
+        action: 'PATIENT_CHECK_IN',
+        bookingId: confirmedBooking.booking_id,
+        patientName: confirmedBooking.patient_name,
+        phone: confirmedBooking.phone,
+        doctorId: confirmedBooking.doctor_id,
+        doctorName: confirmedBooking.doctor_name,
+        date: confirmedBooking.appt_date,
+        time: confirmedBooking.appt_time,
+        token: `T-${confirmedBooking.booking_id.replace(/\D/g, '').slice(-4) || '102'}`,
+      });
+      QRCode.toDataURL(payload, {
+        width: 260,
+        margin: 2,
+        color: { dark: '#176541', light: '#ffffff' },
+      })
+        .then(setQrCodeUrl)
+        .catch(console.error);
+    } else {
+      setQrCodeUrl('');
+    }
+  }, [confirmedBooking]);
 
   useEffect(() => {
     if (initialDoctorId) {
@@ -239,6 +269,61 @@ export const AppointmentsView: React.FC<AppointmentsViewProps> = ({
               Confirmation SMS & WhatsApp dispatched to <strong>{confirmedBooking.phone}</strong>.
               Keep your reference for any queries.
             </span>
+          </div>
+
+          {/* Contactless Check-In QR Pass */}
+          <div className="p-5 rounded-2xl bg-gradient-to-br from-[#fcf7f4] via-[#f8ede7] to-[#eedbd0] dark:from-[#241a16] dark:via-[#1e1512] dark:to-[#17100d] border border-[#e5d3c8] dark:border-[#3d2e26] mb-6 flex flex-col sm:flex-row items-center gap-5">
+            <div className="p-2.5 bg-white rounded-2xl border-2 border-[#176541]/30 shadow-md shrink-0">
+              {qrCodeUrl ? (
+                <img
+                  src={qrCodeUrl}
+                  alt={`Arrival check-in QR code for ${confirmedBooking.booking_id}`}
+                  className="w-36 h-36 object-contain"
+                />
+              ) : (
+                <div className="w-36 h-36 flex items-center justify-center text-xs text-[#786b65]">
+                  Generating QR code...
+                </div>
+              )}
+            </div>
+
+            <div className="space-y-2 text-center sm:text-left">
+              <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-[#176541] text-white text-[10px] font-bold uppercase tracking-wider">
+                <QrCode className="w-3 h-3" />
+                <span>Contactless Check-In QR Pass</span>
+              </div>
+              <h4 className="font-heading font-bold text-base text-[#481e0b] dark:text-[#f7eee9]">
+                Scan & Check In at Clinic Kiosk
+              </h4>
+              <p className="text-xs text-[#685a53] dark:text-[#c4b5ae] leading-relaxed">
+                Save or screenshot this QR pass. When you arrive at CityCare reception, scan it at the kiosk to check in in 5 seconds and receive your queue token.
+              </p>
+              <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!qrCodeUrl) return;
+                    const a = document.createElement('a');
+                    a.href = qrCodeUrl;
+                    a.download = `CityCare-Pass-${confirmedBooking.booking_id}.png`;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                  }}
+                  className="px-3.5 py-1.5 rounded-full bg-white dark:bg-[#251d19] border border-[#dcc9bf] dark:border-[#42332a] hover:border-[#176541] text-xs font-bold text-[#176541] dark:text-[#34d399] transition-colors cursor-pointer flex items-center gap-1.5 shadow-2xs"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>Save QR Pass (PNG)</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onNavigate('Patient portal')}
+                  className="px-3.5 py-1.5 rounded-full bg-[#176541] hover:bg-[#124d32] text-xs font-bold text-white transition-colors cursor-pointer flex items-center gap-1.5 shadow-2xs"
+                >
+                  <span>Open in Patient Portal</span>
+                </button>
+              </div>
+            </div>
           </div>
 
           <div className="flex flex-col sm:flex-row gap-3">

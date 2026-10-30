@@ -1,7 +1,7 @@
 import React from 'react';
 import { NavTab } from '../../types/clinic';
-import { DOCTORS_SEED } from '../../data/clinicData';
-import { Check, Calendar, ArrowRight } from 'lucide-react';
+import { DOCTORS_SEED, CLINIC } from '../../data/clinicData';
+import { Check, Calendar, ArrowRight, FlaskConical, Video, Sparkles, ShieldCheck, MapPin, Navigation } from 'lucide-react';
 
 interface HomeViewProps {
   onNavigate: (tab: NavTab, doctorId?: number) => void;
@@ -278,6 +278,75 @@ export const HomeView: React.FC<HomeViewProps> = ({ onNavigate }) => {
         </div>
       </section>
 
+      {/* New Clinical Innovations: Diagnostics & Telehealth */}
+      <section className="grid grid-cols-1 md:grid-cols-2 gap-5">
+        {/* Card 1: Diagnostic Laboratory & Home Collection */}
+        <div className="relative overflow-hidden p-6 rounded-3xl bg-gradient-to-br from-[#edf7f0] to-[#d6ede0] dark:from-[#1a2d22] dark:to-[#122219] border border-[#cfe1d5] dark:border-[#2b4434] shadow-xs flex flex-col justify-between">
+          <div>
+            <div className="flex items-center justify-between gap-2 mb-3">
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#176541] text-white text-[10px] font-bold uppercase tracking-wider">
+                <FlaskConical className="w-3 h-3" />
+                Diagnostic Center
+              </span>
+              <span className="text-[11px] font-bold text-[#176541] dark:text-[#34d399] flex items-center gap-1">
+                <Sparkles className="w-3 h-3 text-amber-500" />
+                Free Home Pickup
+              </span>
+            </div>
+
+            <h3 className="font-heading text-xl font-bold text-[#176541] dark:text-[#34d399] mb-2">
+              Pathology & Health Screenings
+            </h3>
+            <p className="text-xs text-gray-700 dark:text-gray-300 leading-relaxed mb-4">
+              Book routine and specialized blood panels (CBC, Lipid, HbA1c, Thyroid, LFT, Vit D3/B12). Certified phlebotomists collect samples right at your doorstep. Verified digital medical reports released within hours.
+            </p>
+          </div>
+
+          <div className="pt-2">
+            <button
+              onClick={() => onNavigate('Diagnostics')}
+              className="w-full py-2.5 px-4 rounded-2xl bg-[#176541] hover:bg-[#125133] text-white font-bold text-xs shadow-xs transition-all flex items-center justify-center gap-2 cursor-pointer"
+            >
+              <span>Explore Tests & Book Home Sample</span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
+
+        {/* Card 2: Virtual Telehealth & Video Consultations */}
+        <div className="relative overflow-hidden p-6 rounded-3xl bg-gradient-to-br from-sky-50 to-blue-100/60 dark:from-[#162738] dark:to-[#0f1d2c] border border-sky-200 dark:border-sky-900 shadow-xs flex flex-col justify-between">
+          <div>
+            <div className="flex items-center justify-between gap-2 mb-3">
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-sky-700 text-white text-[10px] font-bold uppercase tracking-wider">
+                <Video className="w-3 h-3" />
+                Virtual Care
+              </span>
+              <span className="text-[11px] font-bold text-sky-700 dark:text-sky-300 flex items-center gap-1">
+                <ShieldCheck className="w-3 h-3 text-sky-500" />
+                Encrypted HD Room
+              </span>
+            </div>
+
+            <h3 className="font-heading text-xl font-bold text-sky-900 dark:text-sky-200 mb-2">
+              Instant Video Teleconsultations
+            </h3>
+            <p className="text-xs text-gray-700 dark:text-gray-300 leading-relaxed mb-4">
+              Can't make it in person? Connect directly with CityCare duty physicians via secure high-definition video. Instant vital telemetry readout, consultation chat, and automatic digital prescription delivery.
+            </p>
+          </div>
+
+          <div className="pt-2">
+            <button
+              onClick={() => onNavigate('Telehealth')}
+              className="w-full py-2.5 px-4 rounded-2xl bg-sky-700 hover:bg-sky-800 text-white font-bold text-xs shadow-xs transition-all flex items-center justify-center gap-2 cursor-pointer"
+            >
+              <span>Launch Virtual Clinic Room</span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
+      </section>
+
       {/* Our Specialists Preview */}
       <section>
         <div className="text-[11px] font-bold uppercase tracking-[0.16em] text-[#c85d38] dark:text-[#f38360] mb-1">
@@ -383,6 +452,40 @@ export const HomeView: React.FC<HomeViewProps> = ({ onNavigate }) => {
               Keep the reference shown after saving your appointment for lookup or cancellation.
             </p>
           </div>
+        </div>
+      </section>
+
+      {/* Clinic Map Location Spotlight */}
+      <section className="p-6 md:p-8 rounded-3xl bg-white dark:bg-[#1e1714] border border-[#d5e5db] dark:border-[#382b24] shadow-xs flex flex-col md:flex-row items-center justify-between gap-6">
+        <div className="space-y-2 max-w-xl">
+          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#edf7f0] dark:bg-[#1a2d22] text-[#176541] dark:text-[#34d399] text-[11px] font-bold uppercase tracking-wider">
+            <MapPin className="w-3.5 h-3.5" />
+            <span>Clinic Map & Directions</span>
+          </div>
+          <h3 className="font-heading text-xl md:text-2xl font-bold text-[#481e0b] dark:text-[#f7eee9]">
+            Visit CityCare Clinic in Karond, Bhopal
+          </h3>
+          <p className="text-xs text-[#685a53] dark:text-[#c4b5ae] leading-relaxed">
+            {CLINIC.address}. Conveniently connected via Karond Square and Berasia Road. Free patient parking and full wheelchair accessibility.
+          </p>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-3 shrink-0">
+          <button
+            onClick={() => onNavigate('Contact')}
+            className="px-5 py-2.5 rounded-full bg-[#176541] hover:bg-[#125133] text-white text-xs font-bold transition-all shadow-xs flex items-center gap-1.5 cursor-pointer"
+          >
+            <Navigation className="w-3.5 h-3.5" />
+            <span>Open Interactive Map</span>
+          </button>
+          <a
+            href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(CLINIC.address)}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="px-4 py-2.5 rounded-full border border-[#dcc9bf] dark:border-[#42332a] bg-[#fdfaf8] dark:bg-[#251d19] hover:bg-gray-100 text-xs font-semibold text-[#481e0b] dark:text-[#f7eee9] transition-colors cursor-pointer"
+          >
+            Live Google Maps ↗
+          </a>
         </div>
       </section>
 

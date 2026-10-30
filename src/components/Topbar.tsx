@@ -1,5 +1,4 @@
-import React from 'react';
-import { Phone, Clock, Sun, Moon } from 'lucide-react';
+import { Phone, Clock, Sun, Moon, Stethoscope, MapPin } from 'lucide-react';
 import { CLINIC } from '../data/clinicData';
 
 interface TopbarProps {
@@ -43,9 +42,9 @@ export const Topbar: React.FC<TopbarProps> = ({ onNavigate, isDark, onToggleThem
           </div>
         </div>
 
-        {/* Right: Phone CTA & Dark Mode Toggle */}
-        <div className="flex items-center justify-end gap-3 text-right">
-          <div className="text-right">
+        {/* Right: Phone CTA, Doctor Login & Dark Mode Toggle */}
+        <div className="flex items-center justify-end gap-2.5 text-right">
+          <div className="hidden lg:block text-right">
             <strong className="block text-[10px] md:text-[11px] uppercase tracking-wider text-[#481e0b] dark:text-[#e8dcd5] font-semibold">
               Call the clinic
             </strong>
@@ -57,6 +56,25 @@ export const Topbar: React.FC<TopbarProps> = ({ onNavigate, isDark, onToggleThem
               <span>{CLINIC.phone}</span>
             </a>
           </div>
+
+          {/* Quick Clinic Map CTA */}
+          <button
+            onClick={() => onNavigate('Contact')}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-[#dcc9bf] dark:border-[#42332a] bg-[#fdfaf8] dark:bg-[#251d19] hover:border-[#c85d38] dark:hover:border-[#e0734d] text-xs font-semibold text-[#481e0b] dark:text-[#f7eee9] transition-all cursor-pointer shrink-0"
+            title="View Clinic on Map & Directions"
+          >
+            <MapPin className="w-3.5 h-3.5 text-[#c85d38]" />
+            <span className="hidden sm:inline">Map & Location</span>
+          </button>
+
+          {/* Quick Doctor Login CTA */}
+          <button
+            onClick={() => onNavigate('Doctor portal')}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-[#cfe1d5] dark:border-[#2b4434] bg-[#edf7f0] dark:bg-[#1a2d22] hover:bg-[#dceee2] dark:hover:bg-[#233c2e] text-[#176541] dark:text-[#34d399] text-xs font-bold transition-all shadow-2xs hover:scale-102 cursor-pointer shrink-0"
+          >
+            <Stethoscope className="w-3.5 h-3.5" />
+            <span>Doctor Login</span>
+          </button>
 
           {/* Theme Toggle Button */}
           <button

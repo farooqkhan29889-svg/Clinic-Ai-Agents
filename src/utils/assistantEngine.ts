@@ -431,13 +431,19 @@ export function createAssistantReply(
     lower.includes('address') ||
     lower.includes('location') ||
     lower.includes('where') ||
+    lower.includes('map') ||
+    lower.includes('direction') ||
+    lower.includes('route') ||
     lower.includes('phone') ||
     lower.includes('contact') ||
     lower.includes('call')
   ) {
+    const encoded = encodeURIComponent(CLINIC.address);
+    const mapsLink = `https://www.google.com/maps/search/?api=1&query=${encoded}`;
     return {
-      reply: `**CityCare Clinic Contact Details:**\n\n📍 **Address:** ${CLINIC.address}\n📞 **Phone:** ${CLINIC.phone}\n⏰ **Timings:** ${CLINIC.hours} (Sunday closed)\n\nYou can also contact us on WhatsApp at ${CLINIC.phone}.`,
+      reply: `**CityCare Clinic Location & Map:**\n\n📍 **Address:** ${CLINIC.address}\n🗺️ [View on Google Maps](${mapsLink})\n📞 **Phone:** ${CLINIC.phone}\n⏰ **Timings:** ${CLINIC.hours} (Sunday closed)\n\nLocated near Saeed Colony and Karond Square on Berasia Road with ample parking and wheelchair access.`,
       actions: [
+        { t: '🗺️ Open Interactive Map', m: '__mode__map' },
         { t: '📅 Book appointment', m: '__mode__booking' },
         { t: '🩺 Meet our doctors', m: '__mode__doctors' },
       ],

@@ -27,6 +27,7 @@ export const AssistantView: React.FC<AssistantViewProps> = ({ onNavigate }) => {
         actions: [
           { t: '📅 Book appointment', m: '__mode__booking' },
           { t: '🩺 Doctors & fees', m: '__mode__doctors' },
+          { t: '📍 Map & Directions', m: '__mode__map' },
           { t: 'ℹ️ Clinic information', m: '__mode__clinic_info' },
           { t: '↪ Cancel booking', m: '__mode__manage' },
         ],
@@ -79,6 +80,10 @@ export const AssistantView: React.FC<AssistantViewProps> = ({ onNavigate }) => {
   };
 
   const handleActionClick = (action: ChatAction) => {
+    if (action.m === '__mode__map') {
+      onNavigate('Contact');
+      return;
+    }
     handleSendMessage(action.m);
   };
 
@@ -92,6 +97,7 @@ export const AssistantView: React.FC<AssistantViewProps> = ({ onNavigate }) => {
         actions: [
           { t: '📅 Book appointment', m: '__mode__booking' },
           { t: '🩺 Doctors & fees', m: '__mode__doctors' },
+          { t: '📍 Map & Directions', m: '__mode__map' },
           { t: 'ℹ️ Clinic information', m: '__mode__clinic_info' },
           { t: '↪ Cancel booking', m: '__mode__manage' },
         ],
@@ -104,11 +110,30 @@ export const AssistantView: React.FC<AssistantViewProps> = ({ onNavigate }) => {
     return rawText.split('\n').map((paragraph, pIdx) => {
       if (!paragraph.trim()) return <div key={pIdx} className="h-2" />;
 
-      const parts = paragraph.split(/(\*\*.*?\*\*|`.*?`)/g);
+      // Match markdown links [text](url), bold **text**, and inline code `code`
+      const parts = paragraph.split(/(\[.*?\]\(.*?\)|\*\*.*?\*\*|`.*?`)/g);
 
       return (
         <p key={pIdx} className="mb-1 leading-relaxed">
           {parts.map((part, idx) => {
+            if (part.startsWith('[') && part.includes('](') && part.endsWith(')')) {
+              const labelMatch = part.match(/\[(.*?)\]/);
+              const urlMatch = part.match(/\((.*?)\)/);
+              const label = labelMatch ? labelMatch[1] : 'Link';
+              const url = urlMatch ? urlMatch[1] : '#';
+              return (
+                <a
+                  key={idx}
+                  href={url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-bold underline text-[#176541] dark:text-[#34d399] hover:opacity-80 inline-flex items-center gap-0.5"
+                >
+                  <span>{label}</span>
+                  <span className="text-[10px]">↗</span>
+                </a>
+              );
+            }
             if (part.startsWith('**') && part.endsWith('**')) {
               return (
                 <strong key={idx} className="font-semibold text-[#481e0b] dark:text-[#f7eee9]">

@@ -2,6 +2,7 @@ import React from 'react';
 import { NavTab } from '../../types/clinic';
 import { CLINIC } from '../../data/clinicData';
 import { Phone, Clock, Calendar, MessageSquare, AlertCircle } from 'lucide-react';
+import { ClinicLocationMap } from '../ClinicLocationMap';
 
 interface ContactViewProps {
   onNavigate: (tab: NavTab) => void;
@@ -17,10 +18,10 @@ export const ContactView: React.FC<ContactViewProps> = ({ onNavigate }) => {
             WE’RE HERE TO HELP
           </div>
           <h1 className="font-heading text-2xl md:text-3xl font-bold text-white mb-2">
-            Contact CityCare
+            Contact & Clinic Location
           </h1>
           <p className="text-xs md:text-sm text-[#fff1eb] max-w-xl leading-relaxed mb-4">
-            Reach the clinic for appointment questions or help planning your visit.
+            Reach the clinic for appointment questions, get live Google Maps directions, or explore nearby medical amenities.
           </p>
 
           <div className="flex flex-wrap gap-2">
@@ -34,6 +35,11 @@ export const ContactView: React.FC<ContactViewProps> = ({ onNavigate }) => {
         </div>
 
         <div className="absolute -top-16 -right-16 w-60 h-60 rounded-full border border-white/20 shadow-[0_0_0_24px_rgba(255,255,255,0.05)] pointer-events-none" />
+      </section>
+
+      {/* Interactive Google Map & Gemini Maps Grounding Section */}
+      <section>
+        <ClinicLocationMap />
       </section>
 
       {/* Contact Cards Grid */}
