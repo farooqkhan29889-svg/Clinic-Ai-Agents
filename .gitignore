@@ -6,19 +6,32 @@ node_modules/
 # Build outputs
 dist/
 build/
+*.manifest
 
-# Local env files
+# Local env files & secrets (NEVER commit)
 .env
 .env.local
 .env.development.local
 .env.test.local
 .env.production.local
+.streamlit/secrets.toml
+
+# Python / virtualenv
+.venv/
+__pycache__/
+*.pyc
+*.pyo
 
 # Logs
+*.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
-*.log
+streamlit.log
+desktop_test.log
+exe_test*.log
+preflight.log
+build*.log
 
 # Editor / IDE
 .vscode/
@@ -28,3 +41,4 @@ yarn-error.log*
 
 # AI Studio artifacts / scratch
 .aistudio/
+vibe_images/
