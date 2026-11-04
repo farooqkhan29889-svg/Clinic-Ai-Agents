@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { ChatMessage as ChatMessageType, ToolCall } from '../types/jarvis';
+import { HudTheme, HUD_THEMES } from '../theme/hudThemes';
 import { Volume2, Copy, Check, Terminal, ChevronDown, ChevronUp, Bot, User } from 'lucide-react';
 
 interface ChatMessageProps {
@@ -7,9 +8,10 @@ interface ChatMessageProps {
   onSpeak?: (text: string) => void;
   isSpeakingThis?: boolean;
   highlightQuery?: string;
+  theme?: HudTheme;
 }
 
-function renderHighlightedText(text: string, query?: string) {
+function renderHighlightedText(text: string, query?: string, highlightColor?: string) {
   if (!query || !query.trim()) return text;
   const q = query.trim();
   const escaped = q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -23,7 +25,12 @@ function renderHighlightedText(text: string, query?: string) {
       return (
         <mark
           key={index}
-          className="bg-[#37e6ff]/35 text-white font-semibold rounded px-1 py-0.5 border border-[#37e6ff]/60 shadow-[0_0_8px_rgba(55,230,255,0.4)]"
+          className="text-white font-semibold rounded px-1 py-0.5 border shadow-sm"
+          style={{
+            backgroundColor: `${highlightColor || '#37e6ff'}40`,
+            borderColor: highlightColor || '#37e6ff',
+            boxShadow: `0 0 8px ${highlightColor || '#37e6ff'}80`,
+          }}
         >
           {part}
         </mark>
@@ -38,11 +45,13 @@ export const ChatMessageItem: React.FC<ChatMessageProps> = ({
   onSpeak,
   isSpeakingThis,
   highlightQuery,
+  theme = HUD_THEMES.cyan,
 }) => {
   const [copied, setCopied] = useState(false);
   const [expandedTools, setExpandedTools] = useState(false);
 
   const isAssistant = message.role === 'assistant';
+
 
   const handleCopy = () => {
     navigator.clipboard.writeText(message.content);
@@ -61,16 +70,26 @@ export const ChatMessageItem: React.FC<ChatMessageProps> = ({
 
   return (
     <div
-      className={`flex items-start gap-3.5 p-4 rounded-xl transition-all duration-300 ${
-        isAssistant
-          ? 'bg-[#091420]/80 border border-[#37e6ff]/30 shadow-[inset_0_0_22px_rgba(55,230,255,0.07)]'
-          : 'bg-[#07101b]/70 border border-[#1b8fa8]/30 ml-8'
+      className={`flex items-start gap-3.5 p-4 rounded-xl transition-all duration-300 border ${
+        isAssistant ? 'shadow-sm' : 'ml-8'
       }`}
+      style={{
+        backgroundColor: isAssistant ? `${theme.bgCard}dd` : `${theme.bgBase}cc`,
+        borderColor: isAssistant ? theme.primaryDim : 'rgba(255,255,255,0.1)',
+        boxShadow: isAssistant ? `inset 0 0 20px ${theme.glow}` : undefined,
+      }}
     >
       {/* Avatar */}
       <div className="flex-shrink-0 mt-0.5">
         {isAssistant ? (
-          <div className="w-9 h-9 rounded-full bg-[#04080f] border border-[#37e6ff]/50 flex items-center justify-center p-1 shadow-[0_0_10px_rgba(55,230,255,0.4)]">
+          <div
+            className="w-9 h-9 rounded-full flex items-center justify-center p-1 border shadow-sm"
+            style={{
+              backgroundColor: theme.bgBase,
+              borderColor: theme.primary,
+              boxShadow: `0 0 10px ${theme.glow}`,
+            }}
+          >
             <img
               src="/assets/jarvis_icon_256.png"
               alt="JARVIS"
@@ -79,11 +98,17 @@ export const ChatMessageItem: React.FC<ChatMessageProps> = ({
                 (e.currentTarget as HTMLElement).style.display = 'none';
               }}
             />
-            <Bot className="w-5 h-5 text-[#37e6ff] hidden" />
+            <Bot className="w-5 h-5 hidden" style={{ color: theme.primary }} />
           </div>
         ) : (
-          <div className="w-9 h-9 rounded-full bg-[#142838] border border-[#5dffb0]/40 flex items-center justify-center text-lg">
-            <User className="w-5 h-5 text-[#5dffb0]" />
+          <div
+            className="w-9 h-9 rounded-full flex items-center justify-center text-lg border"
+            style={{
+              backgroundColor: theme.bgSurface,
+              borderColor: theme.accent,
+            }}
+          >
+            <User className="w-5 h-5" style={{ color: theme.accent }} />
           </div>
         )}
       </div>

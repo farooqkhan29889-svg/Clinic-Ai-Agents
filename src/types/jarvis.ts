@@ -84,6 +84,8 @@ export interface VoicePreset {
   lang: string;
 }
 
+export type HudThemeId = 'cyan' | 'stark-red' | 'gold' | 'stealth' | 'emerald';
+
 export interface JarvisSettings {
   apiKey: string;
   geminiKey: string;
@@ -101,4 +103,6 @@ export interface JarvisSettings {
   mailWatchOn: boolean;
   waWatchOn: boolean;
   responseTone: 'Formal' | 'Casual' | 'Sarcastic' | 'Tactical';
+  hudTheme: HudThemeId;
 }
+

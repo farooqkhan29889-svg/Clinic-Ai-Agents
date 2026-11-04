@@ -1,4 +1,5 @@
 import React from 'react';
+import { HudTheme, HUD_THEMES } from '../theme/hudThemes';
 
 interface ArcReactorProps {
   isSpeaking: boolean;
@@ -6,6 +7,7 @@ interface ArcReactorProps {
   isWakeArmed?: boolean;
   onClick?: () => void;
   size?: number;
+  theme?: HudTheme;
 }
 
 export const ArcReactor: React.FC<ArcReactorProps> = ({
@@ -14,7 +16,12 @@ export const ArcReactor: React.FC<ArcReactorProps> = ({
   isWakeArmed,
   onClick,
   size = 76,
+  theme = HUD_THEMES.cyan,
 }) => {
+  const primaryColor = theme.primary;
+  const secondaryColor = theme.secondary;
+  const glowColor = theme.glow;
+
   return (
     <div
       onClick={onClick}
@@ -24,26 +31,36 @@ export const ArcReactor: React.FC<ArcReactorProps> = ({
     >
       {/* Outer Ring */}
       <div
-        className={`absolute inset-0 rounded-full border-2 border-[#37e6ff]/35 border-t-[#37e6ff] animate-spin-clockwise`}
+        className="absolute inset-0 rounded-full border-2 animate-spin-clockwise"
         style={{
+          borderColor: `${primaryColor}40`,
+          borderTopColor: primaryColor,
           boxShadow: isWakeArmed
             ? '0 0 16px #f2b23e'
             : isSpeaking
-            ? '0 0 24px #37e6ff, inset 0 0 12px #37e6ff'
-            : '0 0 8px rgba(55,230,255,0.4)',
+            ? `0 0 24px ${primaryColor}, inset 0 0 12px ${primaryColor}`
+            : `0 0 10px ${glowColor}`,
         }}
       />
 
       {/* Middle Counter-Rotating Ring */}
       <div
-        className="absolute rounded-full border border-transparent border-r-[#37e6ff] border-b-[#37e6ff]/40 animate-spin-counter"
-        style={{ inset: `${size * 0.15}px` }}
+        className="absolute rounded-full border border-transparent animate-spin-counter"
+        style={{
+          inset: `${size * 0.15}px`,
+          borderRightColor: primaryColor,
+          borderBottomColor: `${secondaryColor}60`,
+        }}
       />
 
       {/* Inner Fast Ring */}
       <div
-        className="absolute rounded-full border-2 border-transparent border-t-[#37e6ff] border-l-[#37e6ff]/80 animate-spin-fast"
-        style={{ inset: `${size * 0.28}px` }}
+        className="absolute rounded-full border-2 border-transparent animate-spin-fast"
+        style={{
+          inset: `${size * 0.28}px`,
+          borderTopColor: primaryColor,
+          borderLeftColor: `${primaryColor}cc`,
+        }}
       />
 
       {/* Glowing Arc Core */}
@@ -63,21 +80,31 @@ export const ArcReactor: React.FC<ArcReactorProps> = ({
             ? 'radial-gradient(circle, #ffffff, #f2b23e 55%, rgba(242,178,62,0) 75%)'
             : isListening
             ? 'radial-gradient(circle, #ffffff, #5dffb0 55%, rgba(93,255,176,0) 75%)'
-            : 'radial-gradient(circle, #ffffff, #37e6ff 55%, rgba(55,230,255,0) 75%)',
+            : `radial-gradient(circle, #ffffff, ${primaryColor} 55%, ${secondaryColor} 75%, transparent 100%)`,
           boxShadow: isSpeaking
-            ? '0 0 28px #ffffff, 0 0 65px #37e6ff'
+            ? `0 0 28px #ffffff, 0 0 65px ${primaryColor}`
             : isWakeArmed
             ? '0 0 20px #f2b23e, 0 0 40px rgba(242,178,62,0.8)'
-            : '0 0 18px #37e6ff, 0 0 40px rgba(55,230,255,0.7)',
+            : `0 0 18px ${primaryColor}, 0 0 40px ${glowColor}`,
         }}
       />
 
       {/* Crosshairs & HUD ticks */}
       <div className="absolute inset-0 pointer-events-none flex items-center justify-center opacity-60">
-        <div className="w-full h-[1px] bg-gradient-to-r from-transparent via-[#37e6ff]/40 to-transparent" />
+        <div
+          className="w-full h-[1px]"
+          style={{
+            background: `linear-gradient(to right, transparent, ${primaryColor}66, transparent)`,
+          }}
+        />
       </div>
       <div className="absolute inset-0 pointer-events-none flex items-center justify-center opacity-60">
-        <div className="h-full w-[1px] bg-gradient-to-b from-transparent via-[#37e6ff]/40 to-transparent" />
+        <div
+          className="h-full w-[1px]"
+          style={{
+            background: `linear-gradient(to bottom, transparent, ${primaryColor}66, transparent)`,
+          }}
+        />
       </div>
     </div>
   );

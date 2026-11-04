@@ -11,6 +11,8 @@ import { FileManagerModal } from './components/Modals/FileManagerModal';
 import { EmailModal } from './components/Modals/EmailModal';
 import { WhatsAppModal } from './components/Modals/WhatsAppModal';
 import { PhoneConnectModal } from './components/Modals/PhoneConnectModal';
+import { SettingsModal } from './components/Modals/SettingsModal';
+import { getHudTheme, HUD_THEMES, HudTheme } from './theme/hudThemes';
 import { speechService } from './services/speechService';
 import { processJarvisCommand } from './services/jarvisBrain';
 import { checkDueReminders } from './services/tools';
@@ -41,13 +43,15 @@ import {
   Volume2,
   VolumeX,
   Radio,
-  Zap
+  Zap,
+  Palette,
+  Settings
 } from 'lucide-react';
 
 export const App: React.FC = () => {
-  // --- SETTINGS STATE ---
+  // --- SETTINGS STATE WITH LOCALSTORAGE PERSISTENCE ---
   const [settings, setSettings] = useState<JarvisSettings>(() => {
-    return {
+    const defaultSettings: JarvisSettings = {
       apiKey: '',
       geminiKey: '',
       model: 'llama-3.3-70b-versatile',
@@ -64,8 +68,20 @@ export const App: React.FC = () => {
       mailWatchOn: false,
       waWatchOn: false,
       responseTone: 'Formal',
+      hudTheme: 'cyan',
     };
+
+    try {
+      const saved = localStorage.getItem('jarvis_settings');
+      if (saved) {
+        return { ...defaultSettings, ...JSON.parse(saved) };
+      }
+    } catch (e) {
+      console.warn('Could not parse saved jarvis settings', e);
+    }
+    return defaultSettings;
   });
+
 
   // --- VIEW MODE ---
   const [activeTab, setActiveTab] = useState<'console' | 'diagnostics'>('console');
@@ -93,8 +109,18 @@ export const App: React.FC = () => {
 
   // --- MODAL VISIBILITY ---
   const [openModal, setOpenModal] = useState<
-    'memory' | 'reminders' | 'files' | 'email' | 'whatsapp' | 'phone' | null
+    'memory' | 'reminders' | 'files' | 'email' | 'whatsapp' | 'phone' | 'settings' | null
   >(null);
+
+  // Active HUD Theme
+  const currentTheme = getHudTheme(settings.hudTheme);
+
+  // Sync active theme colors to document root CSS variables
+  useEffect(() => {
+    document.documentElement.style.setProperty('--jarvis', currentTheme.primary);
+    document.documentElement.style.setProperty('--jarvis-dim', currentTheme.primaryDim);
+    document.documentElement.style.setProperty('--jarvis-glow', currentTheme.glow);
+  }, [currentTheme]);
 
   // --- CHAT CONSOLE SEARCH & FILTER STATE ---
   const [searchQuery, setSearchQuery] = useState('');
@@ -162,13 +188,19 @@ export const App: React.FC = () => {
     };
   }, [settings.wakeWordEnabled, settings.wakeWordLang]);
 
-  // Update Settings handler
+  // Update Settings handler with localStorage persistence
   const handleUpdateSettings = (newSettings: Partial<JarvisSettings>) => {
     setSettings((prev) => {
       const updated = { ...prev, ...newSettings };
+      try {
+        localStorage.setItem('jarvis_settings', JSON.stringify(updated));
+      } catch (err) {
+        console.warn('Failed to save jarvis settings', err);
+      }
       return updated;
     });
   };
+
 
   // Background Follow-up Reminder Checker
   useEffect(() => {
@@ -342,11 +374,18 @@ export const App: React.FC = () => {
   });
 
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-[#04070d] text-[#d7f7ff]">
+    <div
+      className="flex h-screen w-screen overflow-hidden text-[#d7f7ff] transition-colors duration-300"
+      style={{ backgroundColor: currentTheme.bgBase }}
+    >
       {/* Sidebar Controls */}
       <Sidebar
         settings={settings}
         onUpdateSettings={handleUpdateSettings}
+        onOpenSettings={() => {
+          soundFX.playClick();
+          setOpenModal('settings');
+        }}
         onOpenMemory={() => {
           soundFX.playClick();
           setOpenModal('memory');
@@ -381,12 +420,19 @@ export const App: React.FC = () => {
       {/* Main Command Center */}
       <main className="flex-1 flex flex-col h-full overflow-hidden relative">
         {/* Top Header with Arc Reactor */}
-        <header className="px-6 py-3.5 border-b border-[#37e6ff]/20 bg-[#061019]/90 backdrop-blur-md flex items-center justify-between z-10 select-none">
+        <header
+          className="px-6 py-3.5 border-b backdrop-blur-md flex items-center justify-between z-10 select-none transition-colors duration-300"
+          style={{
+            backgroundColor: `${currentTheme.bgCard}ea`,
+            borderColor: currentTheme.borderAlpha,
+          }}
+        >
           <div className="flex items-center gap-4">
             <ArcReactor
               isSpeaking={isSpeaking}
               isListening={isListeningMic}
               isWakeArmed={isWakeArmed}
+              theme={currentTheme}
               onClick={() => {
                 soundFX.playRepulsorArm();
                 if (settings.ttsEnabled) {
@@ -402,14 +448,39 @@ export const App: React.FC = () => {
             />
             <div>
               <div className="flex items-center gap-2">
-                <h1 className="font-orbitron text-2xl font-black tracking-widest text-[#eafcff] glow-text-cyan">
+                <h1
+                  className="font-orbitron text-2xl font-black tracking-widest text-[#eafcff]"
+                  style={{
+                    textShadow: `0 0 12px ${currentTheme.primary}, 0 0 25px ${currentTheme.glow}`,
+                  }}
+                >
                   J.A.R.V.I.S.
                 </h1>
-                <span className="text-[10px] px-2 py-0.5 rounded bg-[#37e6ff]/20 border border-[#37e6ff]/40 text-[#37e6ff] font-mono-tech uppercase">
+                <span
+                  className="text-[10px] px-2 py-0.5 rounded font-mono-tech uppercase font-bold"
+                  style={{
+                    backgroundColor: currentTheme.badgeBg,
+                    color: currentTheme.primary,
+                    border: `1px solid ${currentTheme.primary}`,
+                  }}
+                >
                   ALL-TIME READY
                 </span>
+                <span
+                  className="hidden lg:inline text-[9px] px-2 py-0.5 rounded font-mono-tech uppercase"
+                  style={{
+                    backgroundColor: `${currentTheme.bgBase}aa`,
+                    color: currentTheme.secondary,
+                    border: `1px solid ${currentTheme.borderAlpha}`,
+                  }}
+                >
+                  {currentTheme.suitTag}
+                </span>
               </div>
-              <p className="text-[10px] font-mono-tech text-[#1b8fa8] tracking-[0.25em] uppercase -mt-0.5">
+              <p
+                className="text-[10px] font-mono-tech tracking-[0.25em] uppercase -mt-0.5"
+                style={{ color: currentTheme.secondary }}
+              >
                 JUST A RATHER VERY INTELLIGENT SYSTEM • TONY STARK AI
               </p>
             </div>
@@ -417,7 +488,13 @@ export const App: React.FC = () => {
 
           <div className="flex items-center gap-3">
             {/* View Mode Switcher */}
-            <div className="flex items-center bg-[#04080f] p-1 rounded-xl border border-[#37e6ff]/30 text-xs font-orbitron">
+            <div
+              className="flex items-center p-1 rounded-xl border text-xs font-orbitron"
+              style={{
+                backgroundColor: currentTheme.bgBase,
+                borderColor: currentTheme.borderAlpha,
+              }}
+            >
               <button
                 onClick={() => {
                   soundFX.playClick();
@@ -425,11 +502,16 @@ export const App: React.FC = () => {
                 }}
                 className={`px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-all ${
                   activeTab === 'console'
-                    ? 'bg-[#37e6ff]/25 text-[#eafcff] border border-[#37e6ff] shadow-[0_0_10px_rgba(55,230,255,0.25)]'
-                    : 'text-[#8fc9dd] hover:text-white'
+                    ? 'text-white border'
+                    : 'text-gray-400 hover:text-white'
                 }`}
+                style={{
+                  backgroundColor: activeTab === 'console' ? currentTheme.badgeBg : 'transparent',
+                  borderColor: activeTab === 'console' ? currentTheme.primary : 'transparent',
+                  boxShadow: activeTab === 'console' ? `0 0 10px ${currentTheme.glow}` : undefined,
+                }}
               >
-                <Terminal className="w-3.5 h-3.5" /> Command Console
+                <Terminal className="w-3.5 h-3.5" style={{ color: currentTheme.primary }} /> Command Console
               </button>
               <button
                 onClick={() => {
@@ -438,21 +520,47 @@ export const App: React.FC = () => {
                 }}
                 className={`px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-all ${
                   activeTab === 'diagnostics'
-                    ? 'bg-[#37e6ff]/25 text-[#eafcff] border border-[#37e6ff] shadow-[0_0_10px_rgba(55,230,255,0.25)]'
-                    : 'text-[#8fc9dd] hover:text-white'
+                    ? 'text-white border'
+                    : 'text-gray-400 hover:text-white'
                 }`}
+                style={{
+                  backgroundColor: activeTab === 'diagnostics' ? currentTheme.badgeBg : 'transparent',
+                  borderColor: activeTab === 'diagnostics' ? currentTheme.primary : 'transparent',
+                  boxShadow: activeTab === 'diagnostics' ? `0 0 10px ${currentTheme.glow}` : undefined,
+                }}
               >
-                <Shield className="w-3.5 h-3.5 text-[#37e6ff]" /> Armor Diagnostics
+                <Shield className="w-3.5 h-3.5" style={{ color: currentTheme.primary }} /> Armor Diagnostics
               </button>
             </div>
 
-            <AudioVisualizer isSpeaking={isSpeaking} isListening={isListeningMic} />
+            {/* Audio Visualizer */}
+            <AudioVisualizer isSpeaking={isSpeaking} isListening={isListeningMic} theme={currentTheme} />
+
+            {/* Settings & Theme Button */}
+            <button
+              onClick={() => {
+                soundFX.playClick();
+                setOpenModal('settings');
+              }}
+              className="px-3 py-1.5 rounded-xl border flex items-center gap-1.5 font-orbitron text-xs transition-all hover:scale-105 shadow-sm"
+              style={{
+                backgroundColor: currentTheme.badgeBg,
+                borderColor: currentTheme.primary,
+                color: '#ffffff',
+                boxShadow: `0 0 12px ${currentTheme.glow}`,
+              }}
+              title="Open Stark System Settings & HUD Color Palette"
+            >
+              <Palette className="w-3.5 h-3.5" style={{ color: currentTheme.primary }} />
+              <span className="hidden md:inline font-semibold">{currentTheme.name}</span>
+              <Settings className="w-3.5 h-3.5 text-gray-300 ml-0.5" />
+            </button>
 
             <div className="text-right hidden xl:block font-mono-tech">
               <div className="text-xs text-[#eafcff]">
                 {new Date().toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' })}
               </div>
-              <div className="text-[11px] text-[#37e6ff]">
+              <div className="text-[11px]" style={{ color: currentTheme.primary }}>
                 {new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
               </div>
             </div>
@@ -560,6 +668,7 @@ export const App: React.FC = () => {
           <div className="flex-1 overflow-y-auto p-6 space-y-4">
             <StarkHolographicHUD
               isSpeaking={isSpeaking}
+              theme={currentTheme}
               onExecuteVoiceCommand={(cmd) => {
                 setActiveTab('console');
                 executeCommand(cmd);
@@ -569,16 +678,31 @@ export const App: React.FC = () => {
         ) : (
           <div className="flex-1 flex flex-col overflow-hidden">
             {/* Top Search Bar & Telemetry Filters */}
-            <div className="px-6 py-2.5 bg-[#06121f]/95 border-b border-[#37e6ff]/20 backdrop-blur-md flex flex-col gap-2 z-10 select-none">
+            <div
+              className="px-6 py-2.5 border-b backdrop-blur-md flex flex-col gap-2 z-10 select-none transition-colors duration-300"
+              style={{
+                backgroundColor: `${currentTheme.bgCard}f5`,
+                borderColor: currentTheme.borderAlpha,
+              }}
+            >
               <div className="flex items-center gap-2">
                 <div className="relative flex-1">
-                  <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-[#37e6ff]/70 pointer-events-none" />
+                  <Search
+                    className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none"
+                    style={{ color: currentTheme.primary }}
+                  />
                   <input
                     type="text"
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     placeholder="Search past instructions, J.A.R.V.I.S. responses, or tools (e.g., 'WhatsApp', 'calc', 'Mark 85')..."
-                    className="w-full bg-[#04080f]/90 border border-[#37e6ff]/30 rounded-xl pl-9 pr-8 py-2 text-xs text-[#eafcff] placeholder-[#8fc9dd]/60 focus:outline-none focus:border-[#37e6ff] focus:ring-1 focus:ring-[#37e6ff] shadow-[inset_0_0_12px_rgba(55,230,255,0.06)]"
+                    className="w-full rounded-xl pl-9 pr-8 py-2 text-xs text-[#eafcff] placeholder-gray-400 focus:outline-none transition-all"
+                    style={{
+                      backgroundColor: `${currentTheme.bgBase}ee`,
+                      borderColor: currentTheme.borderAlpha,
+                      borderWidth: '1px',
+                      boxShadow: `inset 0 0 12px ${currentTheme.glow}`,
+                    }}
                   />
                   {searchQuery && (
                     <button
@@ -586,7 +710,7 @@ export const App: React.FC = () => {
                         soundFX.playClick();
                         setSearchQuery('');
                       }}
-                      className="absolute right-2.5 top-1/2 -translate-y-1/2 p-0.5 rounded text-[#8fc9dd] hover:text-[#ff7a7a] transition-colors"
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 p-0.5 rounded text-gray-400 hover:text-red-400 transition-colors"
                       title="Clear search query"
                     >
                       <X className="w-3.5 h-3.5" />
@@ -595,7 +719,13 @@ export const App: React.FC = () => {
                 </div>
 
                 {/* Filter Pills */}
-                <div className="hidden sm:flex items-center gap-1 bg-[#04080f] p-1 rounded-xl border border-[#37e6ff]/25 text-[10px] font-orbitron">
+                <div
+                  className="hidden sm:flex items-center gap-1 p-1 rounded-xl border text-[10px] font-orbitron"
+                  style={{
+                    backgroundColor: currentTheme.bgBase,
+                    borderColor: currentTheme.borderAlpha,
+                  }}
+                >
                   {(
                     [
                       { key: 'all', label: 'All' },
@@ -610,11 +740,14 @@ export const App: React.FC = () => {
                         soundFX.playClick();
                         setSearchRoleFilter(tab.key);
                       }}
-                      className={`px-2.5 py-1 rounded-lg transition-all ${
-                        searchRoleFilter === tab.key
-                          ? 'bg-[#37e6ff]/25 text-[#eafcff] border border-[#37e6ff]/40 shadow-[0_0_8px_rgba(55,230,255,0.2)]'
-                          : 'text-[#8fc9dd] hover:text-white'
-                      }`}
+                      className="px-2.5 py-1 rounded-lg transition-all"
+                      style={{
+                        backgroundColor: searchRoleFilter === tab.key ? currentTheme.badgeBg : 'transparent',
+                        borderColor: searchRoleFilter === tab.key ? currentTheme.primary : 'transparent',
+                        borderWidth: '1px',
+                        color: searchRoleFilter === tab.key ? '#ffffff' : '#8fc9dd',
+                        boxShadow: searchRoleFilter === tab.key ? `0 0 8px ${currentTheme.glow}` : undefined,
+                      }}
                     >
                       {tab.label}
                     </button>
@@ -710,6 +843,7 @@ export const App: React.FC = () => {
                     key={msg.id}
                     message={msg}
                     highlightQuery={searchQuery}
+                    theme={currentTheme}
                     onSpeak={(text) =>
                       speechService.speak(
                         text,
@@ -725,9 +859,25 @@ export const App: React.FC = () => {
 
               {/* Processing Indicator */}
               {isProcessing && (
-                <div className="flex items-center gap-3 p-3.5 rounded-xl bg-[#091420]/80 border border-[#37e6ff]/30 max-w-sm">
-                  <div className="w-4 h-4 rounded-full border-2 border-[#37e6ff] border-t-transparent animate-spin" />
-                  <span className="text-xs font-mono-tech text-[#37e6ff] animate-pulse">
+                <div
+                  className="flex items-center gap-3 p-3.5 rounded-xl border max-w-sm"
+                  style={{
+                    backgroundColor: `${currentTheme.bgCard}dd`,
+                    borderColor: currentTheme.borderAlpha,
+                    boxShadow: `0 0 10px ${currentTheme.glow}`,
+                  }}
+                >
+                  <div
+                    className="w-4 h-4 rounded-full border-2 border-t-transparent animate-spin"
+                    style={{
+                      borderColor: currentTheme.primary,
+                      borderTopColor: 'transparent',
+                    }}
+                  />
+                  <span
+                    className="text-xs font-mono-tech animate-pulse"
+                    style={{ color: currentTheme.primary }}
+                  >
                     J.A.R.V.I.S. is processing task & consulting Stark neural networks...
                   </span>
                 </div>
@@ -762,12 +912,23 @@ export const App: React.FC = () => {
         )}
 
         {/* Input Control Console */}
-        <div className="p-4 border-t border-[#37e6ff]/20 bg-[#061019]/95 backdrop-blur-md">
+        <div
+          className="p-4 border-t backdrop-blur-md transition-colors duration-300"
+          style={{
+            backgroundColor: `${currentTheme.bgCard}f5`,
+            borderColor: currentTheme.borderAlpha,
+          }}
+        >
           <form onSubmit={handleSubmit} className="flex items-center gap-2">
             {/* Attach Image button */}
             <label
               title="Show JARVIS an optical schematic or photo"
-              className="p-2.5 rounded-xl bg-[#091624] hover:bg-[#37e6ff]/20 border border-[#37e6ff]/30 text-[#8fc9dd] hover:text-[#37e6ff] cursor-pointer transition-all"
+              className="p-2.5 rounded-xl border cursor-pointer transition-all hover:scale-105"
+              style={{
+                backgroundColor: currentTheme.bgSurface,
+                borderColor: currentTheme.borderAlpha,
+                color: '#8fc9dd',
+              }}
             >
               <Paperclip className="w-4 h-4" />
               <input
@@ -787,13 +948,15 @@ export const App: React.FC = () => {
               type="button"
               onClick={handleMicClick}
               title={isListeningMic ? 'Listening...' : 'Click to speak command directly'}
-              className={`p-2.5 rounded-xl border transition-all ${
-                isListeningMic
-                  ? 'bg-[#5dffb0]/20 border-[#5dffb0] text-[#5dffb0] animate-pulse shadow-[0_0_15px_rgba(93,255,176,0.5)]'
-                  : 'bg-[#091624] hover:bg-[#37e6ff]/20 border-[#37e6ff]/30 text-[#8fc9dd] hover:text-[#37e6ff]'
-              }`}
+              className="p-2.5 rounded-xl border transition-all"
+              style={{
+                backgroundColor: isListeningMic ? `${currentTheme.accent}30` : currentTheme.bgSurface,
+                borderColor: isListeningMic ? currentTheme.accent : currentTheme.borderAlpha,
+                color: isListeningMic ? currentTheme.accent : '#8fc9dd',
+                boxShadow: isListeningMic ? `0 0 15px ${currentTheme.accent}` : undefined,
+              }}
             >
-              {isListeningMic ? <Mic className="w-4 h-4 text-[#5dffb0]" /> : <Mic className="w-4 h-4" />}
+              <Mic className="w-4 h-4" style={{ color: isListeningMic ? currentTheme.accent : undefined }} />
             </button>
 
             {/* Main Prompt Input Box */}
@@ -802,7 +965,13 @@ export const App: React.FC = () => {
               value={inputPrompt}
               onChange={(e) => setInputPrompt(e.target.value)}
               placeholder="Dictate with 'Hello JARVIS' or type any task (e.g. 'check whatsapp', 'message Ali', 'handle my work')..."
-              className="flex-1 bg-[#091420]/90 border border-[#37e6ff]/35 rounded-xl px-4 py-2.5 text-sm text-[#eafcff] placeholder-[#8fc9dd]/60 focus:outline-none focus:border-[#37e6ff] focus:ring-1 focus:ring-[#37e6ff] shadow-[inset_0_0_15px_rgba(55,230,255,0.05)]"
+              className="flex-1 rounded-xl px-4 py-2.5 text-sm text-[#eafcff] placeholder-gray-400 focus:outline-none transition-all"
+              style={{
+                backgroundColor: `${currentTheme.bgBase}ee`,
+                borderColor: currentTheme.borderAlpha,
+                borderWidth: '1px',
+                boxShadow: `inset 0 0 15px ${currentTheme.glow}`,
+              }}
             />
 
             {/* Stop button (when processing or speaking) */}
@@ -811,7 +980,7 @@ export const App: React.FC = () => {
                 type="button"
                 onClick={handleStop}
                 title="Halt active speech or reasoning"
-                className="p-2.5 rounded-xl bg-[#ff7a7a]/20 hover:bg-[#ff7a7a]/30 border border-[#ff7a7a] text-[#ff7a7a] transition-all"
+                className="p-2.5 rounded-xl bg-red-500/20 hover:bg-red-500/30 border border-red-500 text-red-400 transition-all"
               >
                 <Square className="w-4 h-4" />
               </button>
@@ -821,18 +990,28 @@ export const App: React.FC = () => {
             <button
               type="submit"
               disabled={(!inputPrompt.trim() && !pendingImage) || isProcessing}
-              className="p-2.5 rounded-xl bg-[#37e6ff]/20 hover:bg-[#37e6ff]/35 border border-[#37e6ff] text-[#eafcff] transition-all disabled:opacity-40 shadow-[0_0_12px_rgba(55,230,255,0.3)] hover:scale-105"
+              className="p-2.5 rounded-xl border transition-all disabled:opacity-40 hover:scale-105"
+              style={{
+                backgroundColor: currentTheme.badgeBg,
+                borderColor: currentTheme.primary,
+                boxShadow: `0 0 15px ${currentTheme.glow}`,
+              }}
               title="Transmit to JARVIS"
             >
-              <Send className="w-4 h-4 text-[#37e6ff]" />
+              <Send className="w-4 h-4" style={{ color: currentTheme.primary }} />
             </button>
           </form>
 
           {/* Quick status footnote */}
-          <div className="flex items-center justify-between text-[10px] font-mono-tech text-[#1b8fa8] mt-2 px-1">
-            <span>Voice: {settings.ttsEnabled ? settings.voicePreset : 'Muted'} • Tone: {settings.responseTone} • Listener: Always-On</span>
+          <div
+            className="flex items-center justify-between text-[10px] font-mono-tech mt-2 px-1"
+            style={{ color: currentTheme.secondary }}
+          >
+            <span>
+              Voice: {settings.ttsEnabled ? settings.voicePreset : 'Muted'} • Tone: {settings.responseTone} • Theme: {currentTheme.name}
+            </span>
             <span className="flex items-center gap-1">
-              <span className="w-1.5 h-1.5 rounded-full bg-[#5dffb0]" />
+              <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: currentTheme.accent }} />
               Stark Automation Network Active
             </span>
           </div>
@@ -869,6 +1048,13 @@ export const App: React.FC = () => {
       <PhoneConnectModal
         isOpen={openModal === 'phone'}
         onClose={() => setOpenModal(null)}
+      />
+
+      <SettingsModal
+        isOpen={openModal === 'settings'}
+        onClose={() => setOpenModal(null)}
+        settings={settings}
+        onUpdateSettings={handleUpdateSettings}
       />
     </div>
   );

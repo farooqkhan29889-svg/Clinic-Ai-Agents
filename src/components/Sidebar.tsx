@@ -1,8 +1,11 @@
 import React, { useState } from 'react';
-import { JarvisSettings } from '../types/jarvis';
+import { JarvisSettings, HudThemeId } from '../types/jarvis';
+import { getHudTheme, HUD_THEMES } from '../theme/hudThemes';
 import { VOICE_PRESETS } from '../services/speechService';
+import { soundFX } from '../services/soundEffects';
 import {
   Settings,
+  Palette,
   Volume2,
   VolumeX,
   Mic,
@@ -27,6 +30,7 @@ import {
 interface SidebarProps {
   settings: JarvisSettings;
   onUpdateSettings: (newSettings: Partial<JarvisSettings>) => void;
+  onOpenSettings?: () => void;
   onOpenMemory: () => void;
   onOpenReminders: () => void;
   onOpenFiles: () => void;
@@ -43,7 +47,9 @@ interface SidebarProps {
 export const Sidebar: React.FC<SidebarProps> = ({
   settings,
   onUpdateSettings,
+  onOpenSettings,
   onOpenMemory,
+
   onOpenReminders,
   onOpenFiles,
   onOpenEmail,
@@ -56,6 +62,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   isWakeArmed
 }) => {
   const [showKeyInput, setShowKeyInput] = useState(false);
+  const currentTheme = getHudTheme(settings.hudTheme);
 
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
@@ -64,31 +71,147 @@ export const Sidebar: React.FC<SidebarProps> = ({
   };
 
   return (
-    <aside className="w-80 bg-gradient-to-b from-[#06101a]/95 to-[#03080e]/95 border-r border-[#37e6ff]/20 flex flex-col h-screen overflow-y-auto select-none">
+    <aside
+      className="w-80 border-r flex flex-col h-screen overflow-y-auto select-none transition-colors duration-300"
+      style={{
+        backgroundColor: `${currentTheme.bgCard}f0`,
+        borderColor: currentTheme.borderAlpha,
+      }}
+    >
       {/* Brand Header */}
-      <div className="p-5 border-b border-[#37e6ff]/20 bg-[#071320]">
+      <div
+        className="p-5 border-b"
+        style={{
+          borderColor: currentTheme.borderAlpha,
+          backgroundColor: currentTheme.bgSurface,
+        }}
+      >
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2.5">
-            <div className="w-7 h-7 rounded-full bg-[#37e6ff]/10 border border-[#37e6ff] flex items-center justify-center p-1 shadow-[0_0_8px_rgba(55,230,255,0.5)]">
+            <div
+              className="w-7 h-7 rounded-full flex items-center justify-center p-1 border shadow-sm"
+              style={{
+                borderColor: currentTheme.primary,
+                backgroundColor: currentTheme.badgeBg,
+                boxShadow: `0 0 8px ${currentTheme.glow}`,
+              }}
+            >
               <img src="/assets/jarvis_icon_256.png" alt="JARVIS" className="w-full h-full object-contain" />
             </div>
             <div>
               <span className="font-orbitron font-bold text-sm tracking-widest text-[#eafcff]">
                 J.A.R.V.I.S.
               </span>
-              <span className="block text-[9px] font-mono-tech text-[#1b8fa8] tracking-wider">
-                MARK LXXXV AI CORE
+              <span
+                className="block text-[9px] font-mono-tech tracking-wider uppercase"
+                style={{ color: currentTheme.secondary }}
+              >
+                {currentTheme.suitTag}
               </span>
             </div>
           </div>
-          <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-[#5dffb0]/10 border border-[#5dffb0]/30 text-[10px] text-[#5dffb0] font-mono-tech">
-            <span className="w-1.5 h-1.5 rounded-full bg-[#5dffb0] animate-pulse" />
+          <div
+            className="flex items-center gap-1.5 px-2 py-0.5 rounded-full border text-[10px] font-mono-tech"
+            style={{
+              backgroundColor: currentTheme.badgeBg,
+              borderColor: currentTheme.primary,
+              color: currentTheme.primary,
+            }}
+          >
+            <span
+              className="w-1.5 h-1.5 rounded-full animate-pulse"
+              style={{ backgroundColor: currentTheme.primary }}
+            />
             ONLINE
           </div>
         </div>
       </div>
 
-      <div className="p-4 space-y-5 text-xs text-[#d6f5ff]">
+      <div className="p-4 space-y-4 text-xs text-[#d6f5ff]">
+        {/* Full Settings & Theme Modal Trigger */}
+        <button
+          onClick={() => {
+            soundFX.playClick();
+            onOpenSettings?.();
+          }}
+          className="w-full py-2.5 px-3 rounded-xl border flex items-center justify-between transition-all group hover:scale-[1.02]"
+          style={{
+            backgroundColor: currentTheme.badgeBg,
+            borderColor: currentTheme.primary,
+            boxShadow: `0 0 12px ${currentTheme.glow}`,
+          }}
+        >
+          <div className="flex items-center gap-2">
+            <Palette className="w-4 h-4" style={{ color: currentTheme.primary }} />
+            <div className="text-left">
+              <span className="font-orbitron font-bold text-xs text-white block">
+                HUD PALETTE: {currentTheme.name.toUpperCase()}
+              </span>
+              <span className="text-[10px] text-gray-300 font-mono-tech">
+                Switch Theme & System Settings →
+              </span>
+            </div>
+          </div>
+          <Settings className="w-4 h-4 text-gray-300 group-hover:rotate-45 transition-transform" />
+        </button>
+
+        {/* Quick HUD Palette Mini Selector */}
+        <div className="space-y-1.5">
+          <div className="flex items-center justify-between">
+            <span
+              className="font-orbitron font-semibold tracking-wider uppercase text-[11px] flex items-center gap-1.5"
+              style={{ color: currentTheme.primary }}
+            >
+              <Palette className="w-3 h-3" /> Quick Palette
+            </span>
+            <span
+              className="text-[9px] font-mono-tech px-1.5 py-0.5 rounded uppercase"
+              style={{
+                backgroundColor: currentTheme.badgeBg,
+                color: currentTheme.primary,
+                border: `1px solid ${currentTheme.primary}`,
+              }}
+            >
+              {currentTheme.name}
+            </span>
+          </div>
+
+          <div className="grid grid-cols-5 gap-1.5">
+            {Object.values(HUD_THEMES).map((theme) => {
+              const isSelected = (settings.hudTheme || 'cyan') === theme.id;
+              return (
+                <button
+                  key={theme.id}
+                  onClick={() => {
+                    soundFX.playClick();
+                    onUpdateSettings({ hudTheme: theme.id });
+                  }}
+                  title={`${theme.name} (${theme.suitTag})`}
+                  className={`p-1.5 rounded-lg border flex flex-col items-center gap-1 transition-all ${
+                    isSelected ? 'scale-105' : 'opacity-70 hover:opacity-100'
+                  }`}
+                  style={{
+                    backgroundColor: isSelected ? theme.bgSurface : theme.bgCard,
+                    borderColor: isSelected ? theme.primary : 'rgba(255,255,255,0.15)',
+                    boxShadow: isSelected ? `0 0 10px ${theme.glow}` : undefined,
+                  }}
+                >
+                  <span
+                    className="w-3.5 h-3.5 rounded-full border border-black/40"
+                    style={{
+                      backgroundColor: theme.primary,
+                      boxShadow: isSelected ? `0 0 8px ${theme.primary}` : undefined,
+                    }}
+                  />
+                  <span className="text-[8px] font-orbitron font-bold truncate max-w-full text-white">
+                    {theme.id === 'stark-red' ? 'Red' : theme.name.split(' ')[0]}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
         {/* Wake Word Banner if active */}
         <div
           className={`p-3 rounded-xl border transition-all ${
