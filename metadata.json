@@ -1,0 +1,7 @@
+{
+  "name": "J.A.R.V.I.S. — AI Desktop Assistant",
+  "description": "Tony Stark's JARVIS-style AI desktop assistant with interactive HUD, live voice synthesis, wake word listener, memory, follow-up reminders, and PC control.",
+  "capabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
