@@ -119,6 +119,37 @@ class StarkSoundFX {
       osc.stop(ctx.currentTime + 0.3);
     } catch {}
   }
+
+  // Warning / telemetry alert
+  public playWarning() {
+    if (!this.enabled) return;
+    try {
+      const ctx = this.getContext();
+      if (!ctx) return;
+
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(350, ctx.currentTime);
+      osc.frequency.setValueAtTime(280, ctx.currentTime + 0.1);
+
+      gain.gain.setValueAtTime(0.08, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.22);
+
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+
+      osc.start();
+      osc.stop(ctx.currentTime + 0.22);
+    } catch {}
+  }
+
+  // Affirmative success chime
+  public playSuccess() {
+    this.playJarvisChime();
+  }
 }
 
 export const soundFX = new StarkSoundFX();
+

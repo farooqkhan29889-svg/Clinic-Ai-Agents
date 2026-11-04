@@ -722,3 +722,145 @@ function getToneGuidance(tone: string): string {
   }
 }
 
+export async function summarizeConversation(
+  messages: ChatMessage[],
+  settings: JarvisSettings
+): Promise<{ summary: string; memoryId?: string; isLLM: boolean }> {
+  // Extract meaningful conversation turns (excluding empty or repetitive system welcome)
+  const meaningfulMessages = messages.filter(
+    (m) => m.content && !m.content.includes('Welcome back, Sir')
+  );
+
+  const userMessages = meaningfulMessages.filter((m) => m.role === 'user');
+  if (userMessages.length === 0) {
+    return {
+      summary: 'No active user directives or conversation turns detected in the current buffer to summarize, Sir. Issue a command or instruction first.',
+      isLLM: false,
+    };
+  }
+
+  const conversationTranscript = meaningfulMessages
+    .slice(-16) // focus on recent context
+    .map((m) => `${m.role === 'user' ? 'USER' : 'JARVIS'}: ${m.content.slice(0, 500)}`)
+    .join('\n\n');
+
+  let summaryContent = '';
+  let usedLLM = false;
+
+  // Try LLM summarization if Groq API key is present
+  if (settings.apiKey && settings.apiKey.trim().length > 5) {
+    try {
+      const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${settings.apiKey.trim()}`,
+        },
+        body: JSON.stringify({
+          model: settings.model || 'llama-3.3-70b-versatile',
+          messages: [
+            {
+              role: 'system',
+              content: `You are J.A.R.V.I.S., Tony Stark's iconic artificial intelligence.
+Synthesize a concise, polished executive summary of the following user conversation session.
+
+Format requirements:
+- Tone: ${settings.responseTone} (consistently reflected in your delivery)
+- Output format:
+  • **Session Objective:** 1 sentence capturing primary goals.
+  • **Key Directives & Decisions:** 2-4 bullet points highlighting user requests, actions, and decisions.
+  • **Tools & Systems Engaged:** Brief list of subroutines or topics involved (e.g., calculations, WhatsApp, diagnostics, files).
+  • **Pending Items:** Any open tasks or follow-ups mentioned (or 'None outstanding').
+Keep it crisp, sophisticated, and under 220 words.`,
+            },
+            {
+              role: 'user',
+              content: `Please summarize our conversation session:\n\n${conversationTranscript}`,
+            },
+          ],
+          temperature: 0.5,
+          max_tokens: 600,
+        }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        const llmSummary = data.choices?.[0]?.message?.content?.trim();
+        if (llmSummary) {
+          summaryContent = llmSummary;
+          usedLLM = true;
+        }
+      }
+    } catch (err) {
+      console.warn('LLM summary synthesis error, engaging local heuristics', err);
+    }
+  }
+
+  // Fallback to high-fidelity Stark analytical heuristic summary
+  if (!summaryContent) {
+    const userTopics = userMessages.map((m) => m.content.trim());
+    const toolsUsed = new Set<string>();
+    messages.forEach((m) => {
+      m.toolCalls?.forEach((tc) => toolsUsed.add(tc.tool));
+    });
+
+    const timestamp = new Date().toLocaleTimeString('en-US', {
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+
+    const topicBullets = userTopics
+      .slice(-4)
+      .map((t) => `• "${t.length > 60 ? t.slice(0, 60) + '...' : t}"`)
+      .join('\n');
+
+    const toolsList =
+      toolsUsed.size > 0
+        ? Array.from(toolsUsed).map((t) => `\`${t}\``).join(', ')
+        : 'Telemetry monitoring, natural language comprehension';
+
+    summaryContent =
+      settings.responseTone === 'Sarcastic'
+        ? `Here is the executive post-mortem of our recent session, Sir:\n\n` +
+          `• **Session Focus:** Handled ${userMessages.length} directive(s) without setting the workshop on fire.\n` +
+          `• **Key Commands Executed:**\n${topicBullets}\n` +
+          `• **Subroutines Engaged:** ${toolsList}\n` +
+          `• **Status:** All parameters archived to core memory. Standing by for whatever unpredictable task you dream up next.`
+        : settings.responseTone === 'Tactical'
+        ? `**[J.A.R.V.I.S. TACTICAL SESSION DEBRIEF // ${timestamp}]**\n\n` +
+          `• **DIRECTIVES LOGGED:** ${userMessages.length} operational orders processed.\n` +
+          `• **ACTION ITEMS:**\n${topicBullets}\n` +
+          `• **TELEMETRY & SUBROUTINES:** ${toolsList}\n` +
+          `• **READINESS:** Telemetry nominal. Memory snapshot committed.`
+        : settings.responseTone === 'Casual'
+        ? `Here's the quick rundown of what we worked on today, Sir:\n\n` +
+          `• **Overview:** Crushed ${userMessages.length} task(s) together.\n` +
+          `• **Highlights:**\n${topicBullets}\n` +
+          `• **Tools Used:** ${toolsList}\n` +
+          `• **Next Up:** Everything's safely stored in memory and ready when you are!`
+        : `**Executive Session Intelligence Briefing** (${timestamp}):\n\n` +
+          `• **Primary Objectives:** Processed ${userMessages.length} user directive(s) across Mark LXXXV desktop systems.\n` +
+          `• **Key Instructions Handled:**\n${topicBullets}\n` +
+          `• **Subroutines Engaged:** ${toolsList}\n` +
+          `• **Operational Status:** All directive outputs verified and stored in your encrypted long-term memory matrix.`;
+  }
+
+  // Persist into J.A.R.V.I.S. long-term memory module
+  const dateStr = new Date().toLocaleString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+  const savedItem = saveMemory(
+    `[Session Summary - ${dateStr}]: ${summaryContent.replace(/\n+/g, ' ')}`
+  );
+
+  return {
+    summary: summaryContent,
+    memoryId: savedItem?.id,
+    isLLM: usedLLM,
+  };
+}
+
+

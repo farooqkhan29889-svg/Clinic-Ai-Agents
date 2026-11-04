@@ -14,7 +14,7 @@ import { PhoneConnectModal } from './components/Modals/PhoneConnectModal';
 import { SettingsModal } from './components/Modals/SettingsModal';
 import { getHudTheme, HUD_THEMES, HudTheme } from './theme/hudThemes';
 import { speechService } from './services/speechService';
-import { processJarvisCommand } from './services/jarvisBrain';
+import { processJarvisCommand, summarizeConversation } from './services/jarvisBrain';
 import { checkDueReminders } from './services/tools';
 import { soundFX } from './services/soundEffects';
 import {
@@ -23,6 +23,7 @@ import {
   MicOff,
   Square,
   Sparkles,
+  FileText,
   Paperclip,
   X,
   Bell,
@@ -99,6 +100,7 @@ export const App: React.FC = () => {
 
   const [inputPrompt, setInputPrompt] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
+  const [isSummarizing, setIsSummarizing] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [isListeningMic, setIsListeningMic] = useState(false);
   const [isWakeArmed, setIsWakeArmed] = useState(false);
@@ -330,8 +332,57 @@ export const App: React.FC = () => {
     reader.readAsDataURL(file);
   };
 
+  // Summarize Conversation and archive to long-term memory module
+  const handleSummarizeConversation = async () => {
+    if (isSummarizing || isProcessing) return;
+    soundFX.playClick();
+    setIsSummarizing(true);
+
+    try {
+      const result = await summarizeConversation(messages, settings);
+      soundFX.playJarvisChime();
+
+      const summaryMsg: ChatMessage = {
+        id: `summary-${Date.now()}`,
+        role: 'assistant',
+        content: result.summary,
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        toolCalls: [
+          {
+            id: `tc-${Date.now()}-summary`,
+            tool: result.isLLM ? `groq_llm_summarizer` : 'stark_memory_synthesis',
+            input: `session_messages=${messages.length}`,
+            result: `Archived to J.A.R.V.I.S. Memory Module (ID: ${result.memoryId || 'mem_saved'})`,
+            status: 'done',
+          },
+        ],
+      };
+
+      setMessages((prev) => [...prev, summaryMsg]);
+
+      if (settings.ttsEnabled) {
+        speechService.speak(
+          settings.responseTone === 'Casual'
+            ? "I've synthesized our session and archived the summary to your memory module, Sir."
+            : settings.responseTone === 'Sarcastic'
+            ? "Session summarized and filed into your memory matrix, Sir. Everything is officially on record."
+            : "Executive debrief synthesized and successfully archived to long-term memory, Sir.",
+          settings.voicePreset,
+          settings.voiceRate,
+          settings.voicePitch
+        );
+      }
+    } catch (err: any) {
+      console.error('Summarization failed:', err);
+      soundFX.playWarning();
+    } finally {
+      setIsSummarizing(false);
+    }
+  };
+
   // Everyday Tony Stark quick tasks
   const quickActions = [
+    { label: '📑 Summarize Conversation', action: handleSummarizeConversation },
     { label: '💬 Check WhatsApp Messages', prompt: 'Check all my new WhatsApp messages.' },
     { label: '📨 Message Ali', prompt: 'Send WhatsApp message to Ali saying: We are on schedule for the project review today.' },
     { label: '📋 Handle My Work Today', prompt: 'Handle my work today: organize my agenda, check messages, and summarize priorities.' },
@@ -754,6 +805,28 @@ export const App: React.FC = () => {
                   ))}
                 </div>
 
+                {/* Summarize Conversation Button */}
+                <button
+                  onClick={handleSummarizeConversation}
+                  disabled={isSummarizing || isProcessing}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-[10px] font-orbitron font-semibold tracking-wider transition-all hover:scale-[1.02] disabled:opacity-50 whitespace-nowrap"
+                  style={{
+                    backgroundColor: `${currentTheme.bgBase}ee`,
+                    borderColor: currentTheme.primary,
+                    color: currentTheme.primary,
+                    boxShadow: `0 0 10px ${currentTheme.glow}`,
+                  }}
+                  title="Summarize conversation session with LLM and archive into J.A.R.V.I.S. memory matrix"
+                >
+                  <Sparkles className={`w-3.5 h-3.5 ${isSummarizing ? 'animate-spin' : ''}`} />
+                  <span className="hidden md:inline">
+                    {isSummarizing ? 'Summarizing...' : 'Summarize Conversation'}
+                  </span>
+                  <span className="md:hidden">
+                    {isSummarizing ? '...' : 'Summarize'}
+                  </span>
+                </button>
+
                 {isFiltering && (
                   <button
                     onClick={() => {
@@ -804,8 +877,8 @@ export const App: React.FC = () => {
                     {quickActions.map((qa, i) => (
                       <button
                         key={i}
-                        onClick={() => executeCommand(qa.prompt)}
-                        disabled={isProcessing}
+                        onClick={() => (qa.action ? qa.action() : executeCommand(qa.prompt!))}
+                        disabled={isProcessing || isSummarizing}
                         className="px-3 py-1.5 rounded-xl bg-[#091524]/80 hover:bg-[#37e6ff]/20 border border-[#37e6ff]/30 text-xs text-[#d7f7ff] transition-all hover:scale-[1.02] shadow-[0_0_8px_rgba(55,230,255,0.1)] disabled:opacity-50"
                       >
                         {qa.label}
